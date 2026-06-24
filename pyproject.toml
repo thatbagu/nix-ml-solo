@@ -13,8 +13,8 @@ dependencies = [
     "papermill>=2.6",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "ipykernel>=6.0",
     "black>=24.0",
     "ruff>=0.4",
