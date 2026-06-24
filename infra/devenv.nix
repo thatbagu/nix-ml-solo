@@ -36,16 +36,16 @@ in
     # local = MLflow+DVC only, train runs python directly, deploy serves locally
     # cloud = full AWS stack, train → SageMaker, deploy → endpoint
     # Override in root devenv.nix: env.INFRA_MODE = "cloud";
-    INFRA_MODE = "local";
+    INFRA_MODE = lib.mkDefault "local";
 
     # Default training script — override per-project or pass as argument to train
-    TRAINING_SCRIPT = "";
+    TRAINING_SCRIPT = lib.mkDefault "";
 
     # Inference script for deploy (cloud mode).
     # Inference script — overridden in root devenv.nix to src/inference.py
-    INFERENCE_SCRIPT = "";
+    INFERENCE_SCRIPT = lib.mkDefault "";
 
-    TF_VAR_infra_mode = "local";
+    TF_VAR_infra_mode = lib.mkDefault "local";
 
     AWS_PROFILE = "ml-solo";
 
@@ -63,7 +63,10 @@ in
     TF_VAR_sagemaker_model_s3_uri = "";
     TF_VAR_sagemaker_training_image_uri = "";
 
-    # TF_VAR_ssh_public_key — set by the setup wizard into .devenv-configs/local.env
+    # Set by the setup wizard into .devenv-configs/local.env:
+    # TF_VAR_ssh_public_key — EC2 public key content
+    # SSH_IDENTITY_FILE     — path to the matching private key (~/.ssh/<project>)
+    SSH_IDENTITY_FILE = lib.mkDefault "";
 
     # Extra NixOS config for the EC2 VM — override in root devenv.nix to add
     # packages, services, etc. without touching the Terraform module directly.

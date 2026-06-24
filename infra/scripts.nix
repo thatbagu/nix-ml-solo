@@ -67,7 +67,7 @@ _:
         cloud)
           EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
           echo "Tunnelling MLflow from $EC2_IP:5000 → localhost:5000 (Ctrl-C to stop)"
-          ssh -N -L 5000:localhost:5000 "ml@$EC2_IP"
+          ssh -i "$SSH_IDENTITY_FILE" -N -L 5000:localhost:5000 "ml@$EC2_IP"
           ;;
         *)
           echo "Local mode — open http://localhost:5000 (start with: mlflow-start)"
@@ -101,7 +101,7 @@ _:
       fi
       EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
       echo "SSHing into $EC2_IP and submitting training job..."
-      ssh "ml@$EC2_IP" "bash -l -c 'train $*'"
+      ssh -i "$SSH_IDENTITY_FILE" "ml@$EC2_IP" "bash -l -c 'train $*'"
     '';
 
     # ── Deploy / Inference ──────────────────────────────────────────────────

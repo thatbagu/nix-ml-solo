@@ -5,25 +5,7 @@ CONFIGS="$DEVENV_ROOT/.devenv-configs"
 LOCAL_ENV="$CONFIGS/local.env"
 mkdir -p "$CONFIGS/.aws"
 
-# ── Source user shell config ──────────────────────────────────────────────────
-case "$(basename "$SHELL")" in
-  zsh)
-    [ -f "$HOME/.zshenv" ]   && set -a && source "$HOME/.zshenv"   && set +a
-    [ -f "$HOME/.zprofile" ] && set -a && source "$HOME/.zprofile" && set +a
-    [ -f "$HOME/.zshrc" ]    && set -a && source "$HOME/.zshrc"    && set +a
-    ;;
-  fish)
-    if command -v fish >/dev/null 2>&1; then
-      eval "$(fish -c 'for var in (set -x); echo "export $var"; end' 2>/dev/null || true)"
-    fi
-    ;;
-  bash|*)
-    [ -f "$HOME/.bash_profile" ] && set -a && source "$HOME/.bash_profile" && set +a
-    [ -f "$HOME/.bashrc" ]       && set -a && source "$HOME/.bashrc"       && set +a
-    ;;
-esac
-
-# Re-apply devenv env so our vars win over user shell config.
+# Re-apply devenv env.
 if [ -f "$DEVENV_ROOT/.devenv/load" ]; then
   set -a; source "$DEVENV_ROOT/.devenv/load"; set +a
 fi
@@ -112,7 +94,7 @@ _needs_setup() {
   return 1
 }
 
-if _needs_setup; then
+if _needs_setup && [[ "$-" == *i* ]]; then
   echo ""
   echo "  ┌─ First-time setup ──────────────────────────────────────────────┐"
   echo "  │  Press Enter to accept defaults shown in [brackets].            │"
@@ -135,8 +117,21 @@ if _needs_setup; then
     2)
       _save "INFRA_MODE"          "cloud"
       _save "TF_VAR_infra_mode"   "cloud"
-      _prompt "TF_VAR_ssh_public_key" "SSH public key (paste contents, not path)" \
-        "$(cat ~/.ssh/id_ed25519.pub 2>/dev/null || cat ~/.ssh/id_rsa.pub 2>/dev/null || echo '')"
+
+      # Auto-generate a project-specific SSH keypair if one doesn't exist yet.
+      ssh_key_file="$HOME/.ssh/${TF_VAR_project:-nix-ml-solo}"
+      if [ ! -f "$ssh_key_file" ]; then
+        echo ""
+        echo "  Generating SSH keypair: $ssh_key_file"
+        ssh-keygen -t ed25519 -f "$ssh_key_file" -N "" -C "${TF_VAR_project:-nix-ml-solo}" > /dev/null
+        echo "  Done. Private key saved to $ssh_key_file"
+      else
+        echo ""
+        echo "  SSH key already exists: $ssh_key_file"
+      fi
+      _save "TF_VAR_ssh_public_key" "$(cat "${ssh_key_file}.pub")"
+      _save "SSH_IDENTITY_FILE" "$ssh_key_file"
+
       _prompt "TF_VAR_ec2_instance_type" "EC2 instance type" "t3.medium"
       ;;
     *)
