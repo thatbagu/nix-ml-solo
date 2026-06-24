@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# NOTE: this file is sourced into an interactive bash session via devenv's
+# enterShell hook. set -euo pipefail is intentionally scoped to the wizard
+# block only and reset before returning control to the interactive shell.
 
 CONFIGS="$DEVENV_ROOT/.devenv-configs"
 LOCAL_ENV="$CONFIGS/local.env"
@@ -47,7 +49,6 @@ _write_iam_profile() {
   local cfg="$CONFIGS/.aws/config"
   local creds="$CONFIGS/.aws/credentials"
 
-  # Append profile to config if not already present
   if ! grep -q "\[profile ${profile}\]" "$cfg" 2>/dev/null; then
     cat >> "$cfg" <<EOF
 
@@ -57,7 +58,6 @@ output = json
 EOF
   fi
 
-  # Write credentials
   if ! grep -q "\[${profile}\]" "$creds" 2>/dev/null; then
     cat >> "$creds" <<EOF
 
@@ -86,6 +86,16 @@ EOF
   fi
 }
 
+_validate_aws_key_id() {
+  # AWS access key IDs are exactly 20 chars, start with AKIA or ASIA
+  if [[ "$1" =~ ^(AKIA|ASIA)[A-Z0-9]{16}$ ]]; then
+    return 0
+  fi
+  echo "  ✗ That doesn't look like a valid AWS Access Key ID." >&2
+  echo "    Expected: starts with AKIA or ASIA, exactly 20 uppercase alphanumeric chars." >&2
+  return 1
+}
+
 # ── First-run setup wizard ────────────────────────────────────────────────────
 
 _needs_setup() {
@@ -94,7 +104,9 @@ _needs_setup() {
   return 1
 }
 
-if _needs_setup && [[ "$-" == *i* ]]; then
+_run_wizard() {
+  set -euo pipefail
+
   echo ""
   echo "  ┌─ First-time setup ──────────────────────────────────────────────┐"
   echo "  │  Press Enter to accept defaults shown in [brackets].            │"
@@ -102,8 +114,8 @@ if _needs_setup && [[ "$-" == *i* ]]; then
   echo "  └─────────────────────────────────────────────────────────────────┘"
   echo ""
 
-  _prompt "TF_VAR_project"    "Project name"  "nix-ml-solo"
-  _prompt "TF_VAR_aws_region" "AWS region"    "us-east-1"
+  _prompt "TF_VAR_project"    "Project name"     "nix-ml-solo"
+  _prompt "TF_VAR_aws_region" "AWS region"       "us-east-1"
   _prompt "AWS_PROFILE"       "AWS profile name" "ml-solo"
 
   echo ""
@@ -115,10 +127,9 @@ if _needs_setup && [[ "$-" == *i* ]]; then
   read -r mode_choice
   case "${mode_choice:-1}" in
     2)
-      _save "INFRA_MODE"          "cloud"
-      _save "TF_VAR_infra_mode"   "cloud"
+      _save "INFRA_MODE"        "cloud"
+      _save "TF_VAR_infra_mode" "cloud"
 
-      # Auto-generate a project-specific SSH keypair if one doesn't exist yet.
       ssh_key_file="$HOME/.ssh/${TF_VAR_project:-nix-ml-solo}"
       if [ ! -f "$ssh_key_file" ]; then
         echo ""
@@ -135,8 +146,8 @@ if _needs_setup && [[ "$-" == *i* ]]; then
       _prompt "TF_VAR_ec2_instance_type" "EC2 instance type" "t3.medium"
       ;;
     *)
-      _save "INFRA_MODE"          "local"
-      _save "TF_VAR_infra_mode"   "local"
+      _save "INFRA_MODE"        "local"
+      _save "TF_VAR_infra_mode" "local"
       ;;
   esac
 
@@ -145,7 +156,7 @@ if _needs_setup && [[ "$-" == *i* ]]; then
   _save "TF_VAR_aws_profile" "${AWS_PROFILE:-ml-solo}"
   _save "AWS_DEFAULT_REGION" "${TF_VAR_aws_region:-us-east-1}"
 
-  # ── Auth method ────────────────────────────────────────────────────────────
+  # ── Auth method ──────────────────────────────────────────────────────────────
   echo ""
   echo "  AWS authentication method:"
   echo "    1) IAM user access keys  — simple, good for solo use"
@@ -157,7 +168,6 @@ if _needs_setup && [[ "$-" == *i* ]]; then
 
   case "$auth_choice" in
     2)
-      _save "AWS_AUTH_METHOD" "sso"
       echo ""
       printf "  SSO start URL (e.g. https://my-org.awsapps.com/start): "
       read -r sso_url
@@ -171,6 +181,7 @@ if _needs_setup && [[ "$-" == *i* ]]; then
       _save "AWS_SSO_START_URL" "$sso_url"
       _save "AWS_SSO_REGION"    "$sso_region"
       _write_sso_profile "${AWS_PROFILE:-ml-solo}" "$sso_url" "$sso_region" "$account_id" "$sso_role" "${TF_VAR_aws_region:-us-east-1}"
+      _save "AWS_AUTH_METHOD" "sso"  # commit only after config is written
 
       echo ""
       printf "  Run aws-login now to authenticate? [Y/n]: "
@@ -178,7 +189,6 @@ if _needs_setup && [[ "$-" == *i* ]]; then
       case "${ans:-y}" in [Yy]*) aws-login ;; esac
       ;;
     *)
-      _save "AWS_AUTH_METHOD" "iam"
       profile="${AWS_PROFILE:-ml-solo}"
       region="${TF_VAR_aws_region:-us-east-1}"
       project="${TF_VAR_project:-nix-ml-solo}"
@@ -202,8 +212,17 @@ if _needs_setup && [[ "$-" == *i* ]]; then
       echo ""
       echo "  ─────────────────────────────────────────────────────────────────"
       echo ""
-      printf "  Bootstrap AWS Access Key ID: "
-      read -r boot_key_id
+
+      # Retry loop for bootstrap credentials with format validation
+      while true; do
+        printf "  Bootstrap AWS Access Key ID: "
+        read -r boot_key_id
+        if _validate_aws_key_id "$boot_key_id"; then
+          break
+        fi
+        echo "  Please try again."
+        echo ""
+      done
       printf "  Bootstrap AWS Secret Access Key: "
       read -rs boot_secret; echo ""
 
@@ -218,8 +237,13 @@ if _needs_setup && [[ "$-" == *i* ]]; then
         echo "  Falling back to manual key entry." >&2
         unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
         echo ""
-        printf "  AWS Access Key ID: "
-        read -r key_id
+        while true; do
+          printf "  AWS Access Key ID: "
+          read -r key_id
+          _validate_aws_key_id "$key_id" && break
+          echo "  Please try again."
+          echo ""
+        done
         printf "  AWS Secret Access Key: "
         read -rs secret; echo ""
         _write_iam_profile "$profile" "$key_id" "$secret" "$region"
@@ -227,7 +251,6 @@ if _needs_setup && [[ "$-" == *i* ]]; then
         account_id=$(aws sts get-caller-identity --query 'Account' --output text)
         echo "  Authenticated as account ${account_id}."
 
-        # Create IAM user if it doesn't exist
         if aws iam get-user --user-name "$iam_user" > /dev/null 2>&1; then
           echo "  IAM user '${iam_user}' already exists, skipping creation."
         else
@@ -235,7 +258,6 @@ if _needs_setup && [[ "$-" == *i* ]]; then
           aws iam create-user --user-name "$iam_user" > /dev/null
         fi
 
-        # Attach policy
         policy_arn="arn:aws:iam::aws:policy/AdministratorAccess"
         printf "  Use AdministratorAccess policy? Recommended for initial setup. [Y/n]: "
         read -r use_admin
@@ -265,7 +287,6 @@ POLICY
         echo "  Attaching policy..."
         aws iam attach-user-policy --user-name "$iam_user" --policy-arn "$policy_arn" > /dev/null
 
-        # Generate access keys
         echo "  Generating access keys..."
         keys=$(aws iam create-access-key --user-name "$iam_user" --output json)
         new_key_id=$(echo "$keys" | jq -r '.AccessKey.AccessKeyId')
@@ -275,9 +296,10 @@ POLICY
 
         _write_iam_profile "$profile" "$new_key_id" "$new_secret" "$region"
         _save "IAM_USER" "$iam_user"
-
         echo "  IAM user '${iam_user}' ready."
       fi
+
+      _save "AWS_AUTH_METHOD" "iam"  # commit only after credentials are written
 
       echo ""
       printf "  Verify credentials now? [Y/n]: "
@@ -289,44 +311,48 @@ POLICY
   echo ""
   echo "  Saved to .devenv-configs/local.env"
 
-  # ── Deploy infra (cloud mode only) ────────────────────────────────────────
+  # ── Deploy infra (cloud mode only) ──────────────────────────────────────────
   if [ "${INFRA_MODE:-local}" = "cloud" ]; then
-  echo ""
-  echo "  ┌─ Deploy infrastructure ─────────────────────────────────────────┐"
-  echo "  │  This will run: tf-bootstrap → tf-init → tf-plan → tf-apply     │"
-  echo "  │  Creates: EC2 (NixOS), S3 buckets, ECR, SageMaker config        │"
-  echo "  │  Estimated cost: ~\$36/month (EC2 + storage)                     │"
-  echo "  └─────────────────────────────────────────────────────────────────┘"
-  echo ""
-  printf "  Deploy now? [y/N]: "
-  read -r deploy_ans
-  if [[ "${deploy_ans:-n}" =~ ^[Yy] ]]; then
     echo ""
-    echo "  Running tf-bootstrap..."
-    tf-bootstrap
-
+    echo "  ┌─ Deploy infrastructure ─────────────────────────────────────────┐"
+    echo "  │  This will run: tf-bootstrap → tf-init → tf-plan → tf-apply     │"
+    echo "  │  Creates: EC2 (NixOS), S3 buckets, ECR, SageMaker config        │"
+    echo "  │  Estimated cost: ~\$36/month (EC2 + storage)                     │"
+    echo "  └─────────────────────────────────────────────────────────────────┘"
     echo ""
-    echo "  Running tf-init..."
-    tf-init
-
-    echo ""
-    echo "  Running tf-plan (review before applying)..."
-    tf-plan
-
-    echo ""
-    printf "  Apply the plan? [y/N]: "
-    read -r apply_ans
-    if [[ "${apply_ans:-n}" =~ ^[Yy] ]]; then
-      tf-apply
+    printf "  Deploy now? [y/N]: "
+    read -r deploy_ans
+    if [[ "${deploy_ans:-n}" =~ ^[Yy] ]]; then
       echo ""
-      echo "  Infrastructure deployed. Run 'mlflow-open' to open the MLflow UI."
-    else
-      echo "  Skipped. Run 'tf-apply' when ready."
-    fi
-  else
-    echo "  Skipped. Run 'tf-bootstrap && tf-init && tf-plan && tf-apply' when ready."
-  fi
-  fi  # end cloud mode block
+      echo "  Running tf-bootstrap..."
+      tf-bootstrap
 
-  echo ""
+      echo ""
+      echo "  Running tf-init..."
+      tf-init
+
+      echo ""
+      echo "  Running tf-plan (review before applying)..."
+      tf-plan
+
+      echo ""
+      printf "  Apply the plan? [y/N]: "
+      read -r apply_ans
+      if [[ "${apply_ans:-n}" =~ ^[Yy] ]]; then
+        tf-apply
+        echo ""
+        echo "  Infrastructure deployed. Run 'mlflow-open' to open the MLflow UI."
+      else
+        echo "  Skipped. Run 'tf-apply' when ready."
+      fi
+    else
+      echo "  Skipped. Run 'tf-bootstrap && tf-init && tf-plan && tf-apply' when ready."
+    fi
+  fi
+
+  set +euo pipefail
+}
+
+if _needs_setup && [[ "$-" == *i* ]]; then
+  _run_wizard
 fi
