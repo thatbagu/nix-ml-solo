@@ -46,15 +46,16 @@ The setup wizard fires on first run. Press Enter to accept defaults shown in `[b
 - Use your bootstrap credentials to create an IAM user `<project>-deploy` with its own keys
 - Write everything to `.devenv-configs/local.env` (gitignored, never committed)
 
-| Prompt            | Default                 | Notes                                 |
-| ----------------- | ----------------------- | ------------------------------------- |
-| Project name      | `nix-ml-solo`           | Used to name all AWS resources        |
-| AWS region        | `us-east-1`             |                                       |
-| AWS profile       | `ml-solo`               |                                       |
-| Infra mode        | `local`                 | `local` = laptop only, no EC2 cost    |
-| SSH public key    | `~/.ssh/id_ed25519.pub` | Cloud mode only; auto-read if present |
-| EC2 instance type | `t3.medium`             | Cloud mode only                       |
-| Auth method       | IAM keys                | IAM keys or IAM Identity Center (SSO) |
+| Prompt            | Default       | Notes                                              |
+| ----------------- | ------------- | -------------------------------------------------- |
+| Project name      | `nix-ml-solo` | Used to name all AWS resources; must be lowercase  |
+| AWS region        | `us-east-1`   | Fuzzy-search from all valid AWS regions            |
+| AWS profile       | `ml-solo`     |                                                    |
+| Infra mode        | `local`       | `local` = laptop only, no EC2 cost                 |
+| EC2 instance type | `t3.micro`    | Cloud mode only; free-tier eligible, good for MLflow |
+| Auth method       | IAM keys      | IAM keys (solo) or IAM Identity Center (SSO/teams) |
+
+SSH keypair is auto-generated at `~/.ssh/<project-name>` in cloud mode — no paste needed.
 
 Settings are re-used on every subsequent `devenv shell`. Run `setup` anytime to reconfigure.
 

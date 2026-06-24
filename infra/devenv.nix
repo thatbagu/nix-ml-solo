@@ -17,6 +17,7 @@ in
     pkgs.tenv
     pkgs.jq
     pkgs.docker
+    pkgs.gum
   ];
 
   env = {
@@ -54,7 +55,7 @@ in
     TF_VAR_environment = "dev";
     TF_VAR_aws_region = "us-east-1";
     TF_VAR_aws_profile = "ml-solo";
-    TF_VAR_ec2_instance_type = "t3.medium";
+    TF_VAR_ec2_instance_type = "t3.micro";
     TF_VAR_mlflow_port = "5000";
 
     # Set after first tf-apply — leave empty until then

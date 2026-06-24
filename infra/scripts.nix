@@ -6,7 +6,11 @@ _:
 
     setup.exec = ''
       rm -f "$DEVENV_ROOT/.devenv-configs/local.env"
-      exec "$DEVENV_ROOT/infra/scripts/enter-shell.sh"
+      unset AWS_AUTH_METHOD INFRA_MODE TF_VAR_infra_mode TF_VAR_ssh_public_key SSH_IDENTITY_FILE
+      # Source helpers into this subprocess, then call the wizard directly
+      # (bypasses the [[ "$-" == *i* ]] guard that protects the enterShell path).
+      source "$DEVENV_ROOT/infra/scripts/enter-shell.sh"
+      _run_wizard
     '';
 
     # ── AWS auth ────────────────────────────────────────────────────────────
@@ -66,13 +70,29 @@ _:
       case "''${INFRA_MODE:-local}" in
         cloud)
           EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
-          echo "Tunnelling MLflow from $EC2_IP:5000 → localhost:5000 (Ctrl-C to stop)"
-          ssh -i "$SSH_IDENTITY_FILE" -N -L 5000:localhost:5000 "ml@$EC2_IP"
+          pkill -f "ssh.*5000:localhost:5000" 2>/dev/null || true
+          echo "Connecting to $EC2_IP — will retry until NixOS first-boot completes (5-15 min)…"
+          until ssh \
+              -f \
+              -o StrictHostKeyChecking=accept-new \
+              -o ConnectTimeout=10 \
+              -o BatchMode=yes \
+              -i "$SSH_IDENTITY_FILE" \
+              -N -L 5000:localhost:5000 \
+              "ml@$EC2_IP" 2>/dev/null; do
+            printf "  Not ready yet — retrying in 20s…\r"
+            sleep 20
+          done
+          echo "Tunnel active → http://localhost:5000  (mlflow-close to stop)"
           ;;
         *)
           echo "Local mode — open http://localhost:5000 (start with: mlflow-start)"
           ;;
       esac
+    '';
+
+    mlflow-close.exec = ''
+      pkill -f "ssh.*5000:localhost:5000" && echo "MLflow tunnel closed." || echo "No tunnel running."
     '';
 
     # ── Training ────────────────────────────────────────────────────────────

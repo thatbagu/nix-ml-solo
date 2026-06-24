@@ -5,7 +5,7 @@ set -euo pipefail
 
 cd "$PROJECT_ROOT/infra/terraform/modules/state-bootstrap"
 tofu init
-tofu apply
+tofu apply -auto-approve
 
 echo ""
 echo "Bootstrap complete. Now run: tf-init"

@@ -70,7 +70,7 @@
       User      = "ml";
       Restart   = "on-failure";
       ExecStart = ''
-        ${pkgs.python3.withPackages (ps: [ ps.mlflow ps.boto3 ])}/bin/mlflow server \
+        $${pkgs.python3.withPackages (ps: [ ps.mlflow ps.boto3 ])}/bin/mlflow server \
           --host 127.0.0.1 \
           --port ${mlflow_port} \
           --default-artifact-root s3://${dvc_bucket_name}/mlflow \
