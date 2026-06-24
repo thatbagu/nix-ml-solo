@@ -23,7 +23,7 @@ _:
           aws-verify
           ;;
         *)
-          echo "Unknown AWS_AUTH_METHOD '''${AWS_AUTH_METHOD}'. Run 'setup' to reconfigure." >&2
+          echo "Unknown AWS_AUTH_METHOD '$AWS_AUTH_METHOD'. Run 'setup' to reconfigure." >&2
           exit 1
           ;;
       esac

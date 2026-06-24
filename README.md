@@ -8,7 +8,7 @@ If you're new to AWS, follow these four steps — the setup wizard handles every
 
 ### Step 1 — Create an AWS account
 
-Go to [aws.amazon.com](https://aws.amazon.com) → **Create an AWS Account**. A credit card is required but nothing is charged until you deploy infrastructure.
+Go to [aws.amazon.com](https://aws.amazon.com) → **Create an AWS Account**. A credit card is required but nothing is charged until you deploy infrastructure. If it is your first time creating aws account, you would be most likely offered free trial of 200 USD.
 
 ### Step 2 — Get temporary credentials for the setup wizard
 
