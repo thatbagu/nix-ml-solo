@@ -563,12 +563,16 @@ fi
 _init_dvc() {
   [ -d "$DEVENV_ROOT/.dvc" ] && return 0
   [ -z "${DVC_REMOTE_URL:-}" ] && return 0
+  # Use uv run so dvc is available even before the venv is fully on PATH.
+  command -v dvc &>/dev/null || command -v uv &>/dev/null || return 0
+  local DVC
+  DVC=$(command -v dvc 2>/dev/null || echo "uv run dvc")
   echo "Initializing DVC…"
   (
     cd "$DEVENV_ROOT"
-    dvc init --quiet
-    dvc remote add -d myremote "$DVC_REMOTE_URL"
-    dvc remote modify myremote region "${AWS_DEFAULT_REGION:-us-east-1}"
+    $DVC init --quiet
+    $DVC remote add -d myremote "$DVC_REMOTE_URL"
+    $DVC remote modify myremote region "${AWS_DEFAULT_REGION:-us-east-1}"
   )
   echo "DVC ready (remote: $DVC_REMOTE_URL)"
 }
