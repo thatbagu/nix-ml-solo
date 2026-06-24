@@ -1,5 +1,6 @@
 resource "aws_s3_bucket" "nix_cache" {
-  bucket = "${var.project}-${var.environment}-nix-cache"
+  bucket        = "${var.project}-${var.environment}-nix-cache"
+  force_destroy = true
 
   tags = local.tags
 }

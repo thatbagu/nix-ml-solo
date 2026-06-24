@@ -59,7 +59,7 @@ _:
 
     mlflow-start.exec = ''
       echo "Starting local MLflow server at $MLFLOW_TRACKING_URI"
-      mlflow server \
+      uv run mlflow server \
         --host 127.0.0.1 \
         --port 5000 \
         --default-artifact-root "$PROJECT_ROOT/mlruns" \
@@ -95,6 +95,25 @@ _:
       pkill -f "ssh.*5000:localhost:5000" && echo "MLflow tunnel closed." || echo "No tunnel running."
     '';
 
+    # ── NixOS remote rebuild ─────────────────────────────────────────────────
+
+    nixos-rebuild.exec = ''
+      if [ "''${INFRA_MODE:-local}" != "cloud" ]; then
+        echo "nixos-rebuild requires cloud mode." >&2; exit 1
+      fi
+      CONFIG="$DEVENV_ROOT/.devenv-configs/nixos-config.nix"
+      if [ ! -f "$CONFIG" ]; then
+        echo "Run tf-apply first to generate .devenv-configs/nixos-config.nix" >&2; exit 1
+      fi
+      EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
+      SSH="ssh -i $SSH_IDENTITY_FILE -o StrictHostKeyChecking=accept-new"
+      echo "Pushing NixOS config to $EC2_IP…"
+      $SSH "ml@$EC2_IP" "sudo tee /etc/nixos/configuration.nix > /dev/null" < "$CONFIG"
+      echo "Rebuilding (this takes a minute)…"
+      $SSH "ml@$EC2_IP" "sudo nixos-rebuild switch"
+      echo "Done."
+    '';
+
     # ── Training ────────────────────────────────────────────────────────────
 
     train.exec = builtins.readFile ./scripts/train.sh;
@@ -119,9 +138,52 @@ _:
       if [ "''${INFRA_MODE:-local}" != "cloud" ]; then
         echo "train-on-ec2 requires cloud mode." >&2; exit 1
       fi
+
+      SCRIPT="''${1:-''${TRAINING_SCRIPT:-}}"
+      [ $# -gt 0 ] && shift
+      [ "''${1:-}" = "--" ] && shift
+      if [ -z "$SCRIPT" ]; then
+        echo "Usage: train-on-ec2 <script.py|notebook.ipynb> [-- args...]" >&2; exit 1
+      fi
+
       EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
-      echo "SSHing into $EC2_IP and submitting training job..."
-      ssh -i "$SSH_IDENTITY_FILE" "ml@$EC2_IP" "bash -l -c 'train $*'"
+      SSH="ssh -i $SSH_IDENTITY_FILE -o StrictHostKeyChecking=accept-new"
+
+      echo "Syncing project → ml@$EC2_IP:~/project/ …"
+      rsync -az --delete \
+        --exclude='.devenv/' --exclude='.direnv/' --exclude='.devenv-configs/' \
+        --exclude='.git/' --exclude='.venv/' --exclude='mlruns/' \
+        --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.db' \
+        -e "$SSH" \
+        "$PROJECT_ROOT/" "ml@$EC2_IP:~/project/"
+
+      echo "Installing Python deps from uv.lock …"
+      $SSH "ml@$EC2_IP" "cd ~/project && uv sync --frozen --no-dev --quiet"
+
+      EC2_MLFLOW="http://localhost:5000"
+      EC2_DVC=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw dvc_bucket_url 2>/dev/null || echo "''${DVC_REMOTE_URL:-}")
+
+      echo "▶ Training on EC2: $SCRIPT $*"
+      echo "  MLflow : $EC2_MLFLOW"
+      echo ""
+
+      case "$SCRIPT" in
+        *.ipynb)
+          OUT="''${SCRIPT%.ipynb}-executed.ipynb"
+          $SSH "ml@$EC2_IP" "
+            cd ~/project
+            MLFLOW_TRACKING_URI=$EC2_MLFLOW \
+            DVC_REMOTE_URL=$EC2_DVC \
+            uv run papermill '$SCRIPT' '$OUT' $*"
+          ;;
+        *)
+          $SSH "ml@$EC2_IP" "
+            cd ~/project
+            MLFLOW_TRACKING_URI=$EC2_MLFLOW \
+            DVC_REMOTE_URL=$EC2_DVC \
+            uv run python '$SCRIPT' $*"
+          ;;
+      esac
     '';
 
     # ── Deploy / Inference ──────────────────────────────────────────────────

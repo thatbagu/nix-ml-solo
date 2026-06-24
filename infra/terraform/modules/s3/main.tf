@@ -1,5 +1,6 @@
 resource "aws_s3_bucket" "dvc" {
-  bucket = "${var.project}-${var.environment}-dvc"
+  bucket        = "${var.project}-${var.environment}-dvc"
+  force_destroy = true
 
   tags = local.tags
 }

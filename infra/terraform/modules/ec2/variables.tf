@@ -41,3 +41,10 @@ variable "ec2_extra_nix_config" {
   type        = string
   default     = ""
 }
+
+variable "nixpkgs_rev" {
+  description = "nixpkgs git revision from devenv.lock — pins EC2 system packages to the same nixpkgs as local dev"
+  type        = string
+  default     = ""
+}
+

@@ -50,6 +50,24 @@ resource "aws_security_group" "ec2" {
   tags = local.tags
 }
 
+locals {
+  nixos_config = templatefile("${path.module}/configuration.nix.tpl", {
+    nixpkgs_rev      = var.nixpkgs_rev
+    mlflow_port      = var.mlflow_port
+    dvc_bucket_name  = var.dvc_bucket_name
+    nix_cache_bucket = var.nix_cache_bucket
+    aws_region       = var.aws_region
+    ssh_public_key   = var.ssh_public_key
+    extra_nix_config = var.ec2_extra_nix_config
+  })
+}
+
+# Written to .devenv-configs/ so nixos-rebuild can push it without tf-apply.
+resource "local_file" "nixos_config" {
+  content  = local.nixos_config
+  filename = "${path.module}/../../../../.devenv-configs/nixos-config.nix"
+}
+
 resource "aws_instance" "ml" {
   ami           = data.aws_ami.nixos.id
   instance_type = var.instance_type
@@ -63,16 +81,13 @@ resource "aws_instance" "ml" {
     volume_type = "gp3"
   }
 
-  # NixOS reads user_data as a nix expression and applies it on first boot.
-  # This replaces the entire imperative bash bootstrap.
-  user_data = templatefile("${path.module}/configuration.nix.tpl", {
-    mlflow_port       = var.mlflow_port
-    dvc_bucket_name   = var.dvc_bucket_name
-    nix_cache_bucket  = var.nix_cache_bucket
-    aws_region        = var.aws_region
-    ssh_public_key    = var.ssh_public_key
-    extra_nix_config  = var.ec2_extra_nix_config
-  })
+  # Applied on first boot only. Use nixos-rebuild to push subsequent changes
+  # without replacing the instance.
+  user_data = local.nixos_config
+
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 
   tags = merge(local.tags, {
     Name = "${var.project}-${var.environment}-ml-vm"

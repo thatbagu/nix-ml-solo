@@ -82,3 +82,10 @@ variable "sagemaker_instance_type" {
   type        = string
   default     = "ml.t2.medium"
 }
+
+variable "nixpkgs_rev" {
+  description = "nixpkgs git revision — auto-extracted from devenv.lock by enter-shell.sh"
+  type        = string
+  default     = ""
+}
+

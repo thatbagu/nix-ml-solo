@@ -179,6 +179,19 @@ _gum_region() {
   _save "$var" "$value"
 }
 
+# ── devenv.lock → Terraform pins ──────────────────────────────────────────────
+# Exports the nixpkgs rev from devenv.lock as TF_VAR_nixpkgs_rev so the EC2
+# NixOS config is pinned to the same nixpkgs as local dev and Docker builds.
+_sync_devenv_lock_pins() {
+  [ -f "$DEVENV_ROOT/devenv.lock" ] || return 0
+  local rev
+  rev=$(python3 -c "
+import json; d=json.load(open('$DEVENV_ROOT/devenv.lock'))
+print(d['nodes']['nixpkgs']['locked']['rev'])" 2>/dev/null) || return 0
+  export TF_VAR_nixpkgs_rev="$rev"
+}
+_sync_devenv_lock_pins
+
 # ── Wizard ─────────────────────────────────────────────────────────────────────
 
 _needs_setup() {
