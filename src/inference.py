@@ -18,6 +18,7 @@ import mlflow.pyfunc
 
 # ── Required ──────────────────────────────────────────────────────────────────
 
+
 def model_fn(model_dir: str):
     """Load the model from model_dir. Called once at container startup."""
     # MLflow logs a pyfunc-compatible model by default.
@@ -27,6 +28,7 @@ def model_fn(model_dir: str):
 
 
 # ── Optional — override to customise input/output format ─────────────────────
+
 
 def input_fn(request_body: str, content_type: str = "application/json"):
     """Deserialise the request body into model input."""

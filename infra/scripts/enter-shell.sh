@@ -107,8 +107,8 @@ EOF
 # ── First-run setup wizard ────────────────────────────────────────────────────
 
 _needs_setup() {
-  [ -z "${TF_VAR_ssh_public_key:-}" ] && return 0
-  [ -z "${AWS_AUTH_METHOD:-}" ]        && return 0
+  [ -z "${AWS_AUTH_METHOD:-}" ] && return 0
+  [ "${INFRA_MODE:-local}" = "cloud" ] && [ -z "${TF_VAR_ssh_public_key:-}" ] && return 0
   return 1
 }
 
@@ -184,15 +184,28 @@ if _needs_setup; then
       ;;
     *)
       _save "AWS_AUTH_METHOD" "iam"
-      local profile="${AWS_PROFILE:-ml-solo}"
-      local region="${TF_VAR_aws_region:-us-east-1}"
-      local project="${TF_VAR_project:-nix-ml-solo}"
-      local iam_user="${project}-deploy"
+      profile="${AWS_PROFILE:-ml-solo}"
+      region="${TF_VAR_aws_region:-us-east-1}"
+      project="${TF_VAR_project:-nix-ml-solo}"
+      iam_user="${project}-deploy"
 
       echo ""
-      echo "  We'll create an IAM user '${iam_user}' and generate access keys automatically."
-      echo "  You need temporary admin credentials to do this (root or existing admin user)."
-      echo "  These bootstrap credentials are used once and not saved."
+      echo "  We'll create a dedicated IAM user '${iam_user}' with permanent access keys."
+      echo "  You need temporary admin credentials once to bootstrap this (used once, never saved)."
+      echo ""
+      echo "  ── How to get credentials from the AWS Console ──────────────────"
+      echo ""
+      echo "  New AWS account (root user):"
+      echo "    1. Sign in at https://console.aws.amazon.com"
+      echo "    2. Click your account name (top-right) → Security credentials"
+      echo "    3. Scroll to \"Access keys\" → Create access key → Command Line Interface"
+      echo "    4. Copy the Access Key ID and Secret Access Key shown on screen"
+      echo ""
+      echo "  Existing IAM admin user:"
+      echo "    1. IAM → Users → your username → Security credentials tab"
+      echo "    2. Create access key → Command Line Interface → copy both values"
+      echo ""
+      echo "  ─────────────────────────────────────────────────────────────────"
       echo ""
       printf "  Bootstrap AWS Access Key ID: "
       read -r boot_key_id
@@ -216,7 +229,6 @@ if _needs_setup; then
         read -rs secret; echo ""
         _write_iam_profile "$profile" "$key_id" "$secret" "$region"
       else
-        local account_id
         account_id=$(aws sts get-caller-identity --query 'Account' --output text)
         echo "  Authenticated as account ${account_id}."
 
@@ -229,12 +241,11 @@ if _needs_setup; then
         fi
 
         # Attach policy
-        local policy_arn="arn:aws:iam::aws:policy/AdministratorAccess"
+        policy_arn="arn:aws:iam::aws:policy/AdministratorAccess"
         printf "  Use AdministratorAccess policy? Recommended for initial setup. [Y/n]: "
         read -r use_admin
         if [[ "${use_admin:-y}" =~ ^[Nn] ]]; then
           echo "  Creating scoped IAM policy for '${iam_user}'..."
-          local policy_doc
           policy_doc=$(cat <<POLICY
 {
   "Version": "2012-10-17",
@@ -261,9 +272,7 @@ POLICY
 
         # Generate access keys
         echo "  Generating access keys..."
-        local keys
         keys=$(aws iam create-access-key --user-name "$iam_user" --output json)
-        local new_key_id new_secret
         new_key_id=$(echo "$keys" | jq -r '.AccessKey.AccessKeyId')
         new_secret=$(echo "$keys"  | jq -r '.AccessKey.SecretAccessKey')
 

@@ -1,4 +1,5 @@
-{ ... }: {
+_:
+{
   scripts = {
 
     # ── Setup ───────────────────────────────────────────────────────────────
@@ -11,7 +12,7 @@
     # ── AWS auth ────────────────────────────────────────────────────────────
 
     aws-login.exec = ''
-      case "${AWS_AUTH_METHOD:-iam}" in
+      case "''${AWS_AUTH_METHOD:-iam}" in
         sso)
           echo "Logging in via IAM Identity Center (profile: $AWS_PROFILE)..."
           aws sso login --profile "$AWS_PROFILE"
@@ -22,7 +23,7 @@
           aws-verify
           ;;
         *)
-          echo "Unknown AWS_AUTH_METHOD '${AWS_AUTH_METHOD}'. Run 'setup' to reconfigure." >&2
+          echo "Unknown AWS_AUTH_METHOD '''${AWS_AUTH_METHOD}'. Run 'setup' to reconfigure." >&2
           exit 1
           ;;
       esac
@@ -35,15 +36,15 @@
     # ── Terraform / OpenTofu ────────────────────────────────────────────────
 
     tf-bootstrap.exec = builtins.readFile ./scripts/tf-bootstrap.sh;
-    tf-init.exec      = builtins.readFile ./scripts/tf-init.sh;
-    tf-plan.exec      = ''cd "$PROJECT_ROOT/infra/terraform" && tofu plan'';
-    tf-apply.exec     = ''cd "$PROJECT_ROOT/infra/terraform" && tofu apply'';
-    tf-destroy.exec   = ''cd "$PROJECT_ROOT/infra/terraform" && tofu destroy'';
+    tf-init.exec = builtins.readFile ./scripts/tf-init.sh;
+    tf-plan.exec = ''cd "$PROJECT_ROOT/infra/terraform" && tofu plan'';
+    tf-apply.exec = ''cd "$PROJECT_ROOT/infra/terraform" && tofu apply'';
+    tf-destroy.exec = ''cd "$PROJECT_ROOT/infra/terraform" && tofu destroy'';
 
     # ── Nix binary cache sync ───────────────────────────────────────────────
 
-    nix-cache-push.exec            = builtins.readFile ./scripts/nix-cache-push.sh;
-    nix-cache-pull.exec            = builtins.readFile ./scripts/nix-cache-pull.sh;
+    nix-cache-push.exec = builtins.readFile ./scripts/nix-cache-push.sh;
+    nix-cache-pull.exec = builtins.readFile ./scripts/nix-cache-pull.sh;
     nix-cache-configure-local.exec = builtins.readFile ./scripts/nix-cache-configure-local.sh;
 
     # ── Container ───────────────────────────────────────────────────────────
@@ -62,7 +63,7 @@
     '';
 
     mlflow-open.exec = ''
-      case "${INFRA_MODE:-local}" in
+      case "''${INFRA_MODE:-local}" in
         cloud)
           EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
           echo "Tunnelling MLflow from $EC2_IP:5000 → localhost:5000 (Ctrl-C to stop)"
@@ -76,13 +77,13 @@
 
     # ── Training ────────────────────────────────────────────────────────────
 
-    train.exec        = builtins.readFile ./scripts/train.sh;
+    train.exec = builtins.readFile ./scripts/train.sh;
     train-status.exec = builtins.readFile ./scripts/train-status.sh;
 
     train-logs.exec = ''
-      JOB="${1:-}"
+      JOB="''${1:-}"
       if [ -z "$JOB" ]; then echo "Usage: train-logs <job-name>" >&2; exit 1; fi
-      case "${INFRA_MODE:-local}" in
+      case "''${INFRA_MODE:-local}" in
         cloud)
           aws logs tail "/aws/sagemaker/TrainingJobs" \
             --log-stream-name-prefix "$JOB" --follow --region "$AWS_DEFAULT_REGION"
@@ -95,7 +96,7 @@
     '';
 
     train-on-ec2.exec = ''
-      if [ "${INFRA_MODE:-local}" != "cloud" ]; then
+      if [ "''${INFRA_MODE:-local}" != "cloud" ]; then
         echo "train-on-ec2 requires cloud mode." >&2; exit 1
       fi
       EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
@@ -108,10 +109,10 @@
     deploy.exec = builtins.readFile ./scripts/deploy.sh;
 
     deploy-status.exec = ''
-      case "${INFRA_MODE:-local}" in
+      case "''${INFRA_MODE:-local}" in
         cloud)
-          PROJECT="${TF_VAR_project:-ml-solo}"
-          ENV="${TF_VAR_environment:-dev}"
+          PROJECT="''${TF_VAR_project:-ml-solo}"
+          ENV="''${TF_VAR_environment:-dev}"
           ENDPOINT="$PROJECT-$ENV-endpoint"
           aws sagemaker describe-endpoint \
             --endpoint-name "$ENDPOINT" \

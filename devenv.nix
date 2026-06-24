@@ -1,15 +1,19 @@
-{ pkgs, ... }: {
+{ pkgs, ... }:
+{
   imports = [ ./infra/devenv.nix ];
 
   # ── ML / DS packages ────────────────────────────────────────────────────────
 
-  packages = [ pkgs.git pkgs.curl ];
+  packages = [
+    pkgs.git
+    pkgs.curl
+  ];
 
   languages.python = {
-    enable  = true;
+    enable = true;
     version = "3.12";
     uv = {
-      enable      = true;
+      enable = true;
       sync.enable = true;
     };
   };
@@ -18,7 +22,7 @@
 
   env = {
     MLFLOW_TRACKING_URI = "http://localhost:5000";
-    DVC_REMOTE_URL      = "s3://nix-ml-solo-dev-dvc/dvc";
+    DVC_REMOTE_URL = "s3://nix-ml-solo-dev-dvc/dvc";
 
     # Switch to "cloud" once infra is deployed to use EC2/SageMaker
     # INFRA_MODE = "cloud";

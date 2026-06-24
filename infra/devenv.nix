@@ -1,9 +1,15 @@
-{ pkgs, lib ? pkgs.lib, config, ... }:
+{
+  pkgs,
+  lib ? pkgs.lib,
+  config,
+  ...
+}:
 
 let
   devenvRoot = "${config.env.DEVENV_ROOT}/.devenv-configs/";
   projectRoot = "${config.env.DEVENV_ROOT}/";
-in {
+in
+{
   imports = [ ./scripts.nix ];
 
   packages = [
@@ -16,11 +22,11 @@ in {
   env = {
     PROJECT_ROOT = projectRoot;
 
-    TENV_AUTO_INSTALL    = "true";
+    TENV_AUTO_INSTALL = "true";
     TOFUENV_TOFU_VERSION = "1.9.1";
 
-    AWS_CONFIG_DIR              = "${devenvRoot}.aws/";
-    AWS_CONFIG_FILE             = "${devenvRoot}.aws/config";
+    AWS_CONFIG_DIR = "${devenvRoot}.aws/";
+    AWS_CONFIG_FILE = "${devenvRoot}.aws/config";
     AWS_SHARED_CREDENTIALS_FILE = "${devenvRoot}.aws/credentials";
 
     AWS_DEFAULT_REGION = "us-east-1";
@@ -44,18 +50,18 @@ in {
     AWS_PROFILE = "ml-solo";
 
     # ── Terraform vars (TF_VAR_* is picked up automatically by tofu/terraform) ──
-    TF_VAR_project          = "nix-ml-solo";
-    TF_VAR_environment      = "dev";
-    TF_VAR_aws_region       = "us-east-1";
-    TF_VAR_aws_profile      = "ml-solo";
+    TF_VAR_project = "nix-ml-solo";
+    TF_VAR_environment = "dev";
+    TF_VAR_aws_region = "us-east-1";
+    TF_VAR_aws_profile = "ml-solo";
     TF_VAR_ec2_instance_type = "t3.medium";
-    TF_VAR_mlflow_port      = "5000";
+    TF_VAR_mlflow_port = "5000";
 
     # Set after first tf-apply — leave empty until then
-    TF_VAR_sagemaker_instance_type        = "ml.t2.medium";
-    TF_VAR_sagemaker_model_image_uri      = "";
-    TF_VAR_sagemaker_model_s3_uri         = "";
-    TF_VAR_sagemaker_training_image_uri   = "";
+    TF_VAR_sagemaker_instance_type = "ml.t2.medium";
+    TF_VAR_sagemaker_model_image_uri = "";
+    TF_VAR_sagemaker_model_s3_uri = "";
+    TF_VAR_sagemaker_training_image_uri = "";
 
     # TF_VAR_ssh_public_key — set by the setup wizard into .devenv-configs/local.env
 

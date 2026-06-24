@@ -2,13 +2,37 @@
 
 Solo ML stack on AWS. Reproducible environments via Nix, experiment tracking via MLflow, data versioning via DVC, training via SageMaker.
 
-## Prerequisites
+## From zero to first run
 
-- [Nix](https://nixos.org/download) with flakes enabled
-- [devenv](https://devenv.sh/getting-started/)
-- AWS account — see [AWS auth setup](#aws-auth-setup) below
+If you're new to AWS, follow these four steps — the setup wizard handles everything after step 2.
 
-## Quick start
+### Step 1 — Create an AWS account
+
+Go to [aws.amazon.com](https://aws.amazon.com) → **Create an AWS Account**. A credit card is required but nothing is charged until you deploy infrastructure.
+
+### Step 2 — Get temporary credentials for the setup wizard
+
+The wizard will create a dedicated IAM user for you automatically. To do that it needs temporary admin access once.
+
+**Root account (simplest for a brand-new account):**
+
+1. Sign in at [console.aws.amazon.com](https://console.aws.amazon.com)
+2. Click your account name (top-right) → **Security credentials**
+3. Scroll to **Access keys** → **Create access key** → choose **Command Line Interface**
+4. Copy the **Access Key ID** and **Secret Access Key** — you'll paste them into the wizard
+
+**Existing IAM admin user:**
+
+1. IAM → Users → your username → **Security credentials** tab
+2. **Create access key** → Command Line Interface → copy both values
+
+> These credentials are used once by the wizard and never saved to disk.
+
+### Step 3 — Install devenv
+
+Follow [devenv.sh/getting-started](https://devenv.sh/getting-started/) — a one-liner Nix installer.
+
+### Step 4 — Clone and run
 
 ```sh
 git clone <this-repo>
@@ -16,18 +40,23 @@ cd nix-ml-solo
 devenv shell
 ```
 
-On first run the setup wizard fires automatically. It will ask for:
+The setup wizard fires on first run. Press Enter to accept defaults shown in `[brackets]`. It will:
 
-| Prompt | Default | Notes |
-|---|---|---|
-| Project name | `nix-ml-solo` | Used to name all AWS resources |
-| AWS region | `us-east-1` | |
-| AWS profile | `ml-solo` | |
-| SSH public key | `~/.ssh/id_ed25519.pub` | Auto-read if present |
-| EC2 instance type | `t3.medium` | |
-| Auth method | IAM keys | IAM keys or IAM Identity Center (SSO) |
+- Ask for project name, AWS region, infra mode (local vs cloud)
+- Use your bootstrap credentials to create an IAM user `<project>-deploy` with its own keys
+- Write everything to `.devenv-configs/local.env` (gitignored, never committed)
 
-Press Enter to accept any default. Settings are saved to `.devenv-configs/local.env` (gitignored) and re-used on every subsequent `devenv shell`.
+| Prompt            | Default                 | Notes                                 |
+| ----------------- | ----------------------- | ------------------------------------- |
+| Project name      | `nix-ml-solo`           | Used to name all AWS resources        |
+| AWS region        | `us-east-1`             |                                       |
+| AWS profile       | `ml-solo`               |                                       |
+| Infra mode        | `local`                 | `local` = laptop only, no EC2 cost    |
+| SSH public key    | `~/.ssh/id_ed25519.pub` | Cloud mode only; auto-read if present |
+| EC2 instance type | `t3.medium`             | Cloud mode only                       |
+| Auth method       | IAM keys                | IAM keys or IAM Identity Center (SSO) |
+
+Settings are re-used on every subsequent `devenv shell`. Run `setup` anytime to reconfigure.
 
 ## First-time infra setup
 
@@ -41,6 +70,7 @@ tf-apply           # provision everything
 ```
 
 This creates:
+
 - **EC2** — NixOS VM running MLflow (SSH tunnel access only)
 - **S3** — DVC data bucket + Nix binary cache bucket + Terraform state bucket
 - **ECR** — container registry for training/inference images
@@ -50,12 +80,12 @@ This creates:
 
 Set `INFRA_MODE` in `devenv.nix` (or choose during setup wizard):
 
-| | `local` (default) | `cloud` |
-|---|---|---|
-| MLflow | runs on your machine | runs on EC2, SSH tunnel |
-| Training | `python script.py` directly | SageMaker job |
-| Inference | `mlflow models serve` on localhost | SageMaker endpoint |
-| AWS infra needed | S3 only | EC2 + SageMaker + ECR |
+|                  | `local` (default)                  | `cloud`                 |
+| ---------------- | ---------------------------------- | ----------------------- |
+| MLflow           | runs on your machine               | runs on EC2, SSH tunnel |
+| Training         | `python script.py` directly        | SageMaker job           |
+| Inference        | `mlflow models serve` on localhost | SageMaker endpoint      |
+| AWS infra needed | S3 only                            | EC2 + SageMaker + ECR   |
 
 ```nix
 # devenv.nix — switch to cloud
@@ -106,6 +136,7 @@ env.INFERENCE_SCRIPT = "src/inference.py";
 The template implements `model_fn` / `input_fn` / `predict_fn` / `output_fn` using `mlflow.pyfunc`. Edit to match your model flavour (sklearn, pytorch, etc.) and input/output format.
 
 `deploy <run-id>` then:
+
 1. Fetches model artifacts from MLflow by run ID
 2. Places `inference.py` under `code/` inside `model.tar.gz`
 3. Uploads to S3
@@ -141,26 +172,21 @@ tf-apply
 
 ## AWS auth setup
 
-The setup wizard asks which method you want. Both are supported:
+The setup wizard supports two methods:
 
-### Option 1 — IAM user access keys (recommended for solo use)
+### Option 1 — IAM user access keys (default, good for solo use)
 
-The setup wizard automates this fully. It will:
+The wizard automates this fully — see [Step 2](#step-2--get-temporary-credentials-for-the-setup-wizard) above for where to get the bootstrap credentials. It will:
 
-1. Ask for temporary **bootstrap credentials** (your root account keys or an existing admin user — used once, not saved)
-2. Create a dedicated IAM user `<project>-deploy`
-3. Attach `AdministratorAccess` (or a scoped policy — your choice)
-4. Generate access keys and write them to `.devenv-configs/.aws/credentials`
-
-You only need the AWS console once to get the bootstrap credentials:
-- **Root account**: AWS Console → top-right account menu → Security credentials → Access keys
-- **Existing admin user**: IAM → Users → your user → Security credentials → Create access key
+1. Create a dedicated IAM user `<project>-deploy`
+2. Attach `AdministratorAccess` (or a scoped policy — your choice)
+3. Generate access keys and write them to `.devenv-configs/.aws/credentials`
 
 Reference: [AWS — Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html)
 
-### Option 2 — IAM Identity Center (SSO, recommended for teams)
+### Option 2 — IAM Identity Center (SSO, for teams)
 
-Shorter-lived credentials, centralised access control across team members.
+Shorter-lived credentials, centralised access control.
 
 1. Enable **IAM Identity Center** in your AWS account
 2. Create a user and assign the `AdministratorAccess` permission set
