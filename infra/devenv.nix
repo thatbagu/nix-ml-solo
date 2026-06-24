@@ -1,3 +1,4 @@
+# touch
 {
   pkgs,
   lib ? pkgs.lib,
@@ -12,12 +13,13 @@ in
 {
   imports = [ ./scripts.nix ];
 
+  # Infra tooling — local only. Not pushed to EC2.
+  # Shared DS/ML packages live in root devenv.nix.
   packages = [
-    pkgs.awscli2
-    pkgs.tenv
-    pkgs.jq
-    pkgs.docker
-    pkgs.gum
+    pkgs.tenv # Terraform/OpenTofu version manager
+    pkgs.jq # JSON CLI
+    pkgs.docker # Container builds
+    pkgs.gum # TUI prompts for setup wizard
   ];
 
   env = {
@@ -70,10 +72,9 @@ in
     SSH_IDENTITY_FILE = lib.mkDefault "";
 
     # Extra NixOS config for the EC2 VM — override in root devenv.nix to add
-    # packages, services, etc. without touching the Terraform module directly.
-    # Example in root devenv.nix:
+    # services or packages that don't belong in ec2PackageList.
+    # Example:
     #   env.TF_VAR_ec2_extra_nix_config = ''
-    #     environment.systemPackages = with pkgs; [ htop ripgrep ];
     #     services.prometheus.enable = true;
     #   '';
     TF_VAR_ec2_extra_nix_config = "";

@@ -89,3 +89,9 @@ variable "nixpkgs_rev" {
   default     = ""
 }
 
+variable "nixpkgs_nar_hash" {
+  description = "nixpkgs narHash — auto-extracted from devenv.lock by enter-shell.sh"
+  type        = string
+  default     = ""
+}
+

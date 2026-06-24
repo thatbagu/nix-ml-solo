@@ -1,18 +1,24 @@
 # touch
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 {
-  imports = [ ./infra/devenv.nix ];
+  # infra/devenv.nix adds local-only tooling (terraform, docker, gum wizard, etc.).
+  # On EC2 only devenv.nix + devenv.lock are present, so the import is skipped
+  # gracefully — devenv evaluates just this file and produces the same environment.
+  imports = lib.optional (builtins.pathExists ./infra/devenv.nix) ./infra/devenv.nix;
 
-  # ── ML / DS packages ────────────────────────────────────────────────────────
+  # ── Packages ─────────────────────────────────────────────────────────────────
+  # Everything here is installed on BOTH local dev and EC2.
+  # Add a package once here → it appears everywhere.
 
   packages = [
+    pkgs.awscli2
     pkgs.git
     pkgs.curl
+    pkgs.python312
   ];
 
   languages.python = {
     enable = true;
-    version = "3.12";
     uv = {
       enable = true;
       sync.enable = true;
@@ -38,6 +44,17 @@
   # ── Banner ───────────────────────────────────────────────────────────────────
 
   enterShell = ''
+    # Auto-sync devenv closure to S3 when the profile changes (cloud mode only).
+    # .devenv/profile is a symlink whose target changes on every rebuild.
+    _STAMP="$DEVENV_ROOT/.devenv-configs/.last-synced-profile"
+    _CUR=$(readlink -f "$DEVENV_ROOT/.devenv/profile" 2>/dev/null || true)
+    _PREV=$(cat "$_STAMP" 2>/dev/null || true)
+    if [ -n "$_CUR" ] && [ "$_CUR" != "$_PREV" ] && [ "''${INFRA_MODE:-local}" = "cloud" ]; then
+      echo "devenv profile changed — syncing closure to S3…"
+      nix-sync && echo "$_CUR" > "$_STAMP"
+    fi
+    unset _STAMP _CUR _PREV
+
     MODE="''${INFRA_MODE:-local}"
     echo ""
     echo "  nix-ml-solo  [mode: $MODE]"
@@ -75,7 +92,8 @@
     echo "    tf-init / tf-plan / tf-apply / tf-destroy"
     echo ""
     echo "  Nix cache"
-    echo "    nix-cache-push          push local closure → S3"
+    echo "    nix-sync                push devenv closure → S3 (EC2 pulls, no rebuild)"
+    echo "    nix-cache-push          push arbitrary closure → S3"
     echo "    nix-cache-pull          pull specific path ← S3"
     echo "  ─────────────────────────────────────────────"
     echo ""

@@ -54,6 +54,7 @@ module "ec2" {
   nix_cache_push_policy_arn = module.nix_cache.push_policy_arn
   ec2_extra_nix_config      = var.ec2_extra_nix_config
   nixpkgs_rev               = var.nixpkgs_rev
+  nixpkgs_nar_hash          = var.nixpkgs_nar_hash
 }
 
 module "sagemaker" {

@@ -52,13 +52,14 @@ resource "aws_security_group" "ec2" {
 
 locals {
   nixos_config = templatefile("${path.module}/configuration.nix.tpl", {
-    nixpkgs_rev      = var.nixpkgs_rev
     mlflow_port      = var.mlflow_port
     dvc_bucket_name  = var.dvc_bucket_name
     nix_cache_bucket = var.nix_cache_bucket
     aws_region       = var.aws_region
     ssh_public_key   = var.ssh_public_key
     extra_nix_config = var.ec2_extra_nix_config
+    nixpkgs_rev      = var.nixpkgs_rev
+    nixpkgs_nar_hash = var.nixpkgs_nar_hash
   })
 }
 

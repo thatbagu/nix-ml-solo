@@ -180,17 +180,22 @@ _gum_region() {
 }
 
 # ── devenv.lock → Terraform pins ──────────────────────────────────────────────
-# Exports the nixpkgs rev from devenv.lock as TF_VAR_nixpkgs_rev so the EC2
-# NixOS config is pinned to the same nixpkgs as local dev and Docker builds.
+# Exports nixpkgs rev + narHash from devenv.lock so the EC2 NixOS config pins
+# system packages to the exact same nixpkgs commit as local dev.
 _sync_devenv_lock_pins() {
   [ -f "$DEVENV_ROOT/devenv.lock" ] || return 0
-  local rev
+  local rev nar_hash
   rev=$(python3 -c "
 import json; d=json.load(open('$DEVENV_ROOT/devenv.lock'))
 print(d['nodes']['nixpkgs']['locked']['rev'])" 2>/dev/null) || return 0
+  nar_hash=$(python3 -c "
+import json; d=json.load(open('$DEVENV_ROOT/devenv.lock'))
+print(d['nodes']['nixpkgs']['locked']['narHash'])" 2>/dev/null) || return 0
   export TF_VAR_nixpkgs_rev="$rev"
+  export TF_VAR_nixpkgs_nar_hash="$nar_hash"
 }
 _sync_devenv_lock_pins
+
 
 # ── Wizard ─────────────────────────────────────────────────────────────────────
 
@@ -552,3 +557,20 @@ POLICY
 if _needs_setup && [[ "$-" == *i* ]]; then
   _run_wizard
 fi
+
+# ── DVC init (once) ───────────────────────────────────────────────────────────
+
+_init_dvc() {
+  [ -d "$DEVENV_ROOT/.dvc" ] && return 0
+  [ -z "${DVC_REMOTE_URL:-}" ] && return 0
+  echo "Initializing DVC…"
+  (
+    cd "$DEVENV_ROOT"
+    dvc init --quiet
+    dvc remote add -d myremote "$DVC_REMOTE_URL"
+    dvc remote modify myremote region "${AWS_DEFAULT_REGION:-us-east-1}"
+  )
+  echo "DVC ready (remote: $DVC_REMOTE_URL)"
+}
+
+[[ "$-" == *i* ]] && _init_dvc

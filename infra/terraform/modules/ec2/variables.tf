@@ -48,3 +48,9 @@ variable "nixpkgs_rev" {
   default     = ""
 }
 
+variable "nixpkgs_nar_hash" {
+  description = "nixpkgs narHash from devenv.lock — used with fetchTarball for reproducible pinning"
+  type        = string
+  default     = ""
+}
+

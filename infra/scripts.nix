@@ -50,6 +50,8 @@ _:
     nix-cache-push.exec = builtins.readFile ./scripts/nix-cache-push.sh;
     nix-cache-pull.exec = builtins.readFile ./scripts/nix-cache-pull.sh;
     nix-cache-configure-local.exec = builtins.readFile ./scripts/nix-cache-configure-local.sh;
+    # Push the devenv closure to the S3 nix cache so EC2 can pull it without rebuilding.
+    nix-sync.exec = builtins.readFile ./scripts/nix-sync.sh;
 
     # ── Container ───────────────────────────────────────────────────────────
 
@@ -106,11 +108,26 @@ _:
         echo "Run tf-apply first to generate .devenv-configs/nixos-config.nix" >&2; exit 1
       fi
       EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
-      SSH="ssh -i $SSH_IDENTITY_FILE -o StrictHostKeyChecking=accept-new"
+      SSH="ssh -i $SSH_IDENTITY_FILE -o IdentitiesOnly=yes -o IdentityAgent=none -o StrictHostKeyChecking=accept-new"
+
       echo "Pushing NixOS config to $EC2_IP…"
       $SSH "ml@$EC2_IP" "sudo tee /etc/nixos/configuration.nix > /dev/null" < "$CONFIG"
-      echo "Rebuilding (this takes a minute)…"
-      $SSH "ml@$EC2_IP" "sudo nixos-rebuild switch"
+
+      echo "Pushing devenv environment files…"
+      $SSH "ml@$EC2_IP" "mkdir -p /home/ml/project"
+      $SSH "ml@$EC2_IP" "cat > /home/ml/project/devenv.nix"  < "$DEVENV_ROOT/devenv.nix"
+      $SSH "ml@$EC2_IP" "cat > /home/ml/project/devenv.lock" < "$DEVENV_ROOT/devenv.lock"
+      # pyproject.toml + uv.lock are needed so devenv's uv sync succeeds on activation.
+      for f in pyproject.toml uv.lock; do
+        [ -f "$DEVENV_ROOT/$f" ] && $SSH "ml@$EC2_IP" "cat > /home/ml/project/$f" < "$DEVENV_ROOT/$f" || true
+      done
+
+      echo "Rebuilding NixOS (this takes a minute)…"
+      $SSH "ml@$EC2_IP" "sudo nixos-rebuild switch 2>&1"
+
+      echo "Restarting devenv-build to pick up new packages…"
+      $SSH "ml@$EC2_IP" "sudo systemctl restart devenv-build.service && sudo systemctl is-active --wait devenv-build.service"
+
       echo "Done."
     '';
 
