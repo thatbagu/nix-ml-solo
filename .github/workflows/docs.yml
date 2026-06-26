@@ -27,6 +27,8 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v14
 
       - uses: DeterminateSystems/magic-nix-cache-action@v8
+        with:
+          use-flakehub: false
 
       - name: Build docs
         run: |
