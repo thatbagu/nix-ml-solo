@@ -1,5 +1,0 @@
-[core]
-    remote = myremote
-['remote "myremote"']
-    url = s3://nix-ml-solo-dev-dvc/dvc
-    region = us-east-1
