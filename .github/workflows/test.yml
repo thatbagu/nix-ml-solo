@@ -25,7 +25,7 @@ jobs:
               uv run pytest tests/unit/ -v
             '
 
-  integration:
+  integration-scripts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,10 +36,51 @@ jobs:
         with:
           use-flakehub: false
 
-      - name: Run integration tests
+      - name: Run script and lib tests
+        run: |
+          nix shell nixpkgs#python312 nixpkgs#uv nixpkgs#stdenv.cc.cc.lib nixpkgs#shellcheck \
+            --command bash -c '
+              export LD_LIBRARY_PATH=$(nix eval --raw nixpkgs#stdenv.cc.cc.lib)/lib:$LD_LIBRARY_PATH
+              uv run pytest tests/integration/test_lib.py tests/integration/test_scripts.py -v
+            '
+
+  integration-local:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+        with:
+          use-flakehub: false
+
+      - name: Run local mode tests
         run: |
           nix shell nixpkgs#python312 nixpkgs#uv nixpkgs#stdenv.cc.cc.lib \
             --command bash -c '
               export LD_LIBRARY_PATH=$(nix eval --raw nixpkgs#stdenv.cc.cc.lib)/lib:$LD_LIBRARY_PATH
-              uv run pytest tests/integration/ -v
+              uv run pytest tests/integration/test_local_mode.py -v
+            '
+
+  integration-devenv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+        with:
+          use-flakehub: false
+
+      - name: Install devenv
+        run: nix profile install nixpkgs#devenv
+
+      - name: Run devenv integration tests
+        run: |
+          nix shell nixpkgs#python312 nixpkgs#uv nixpkgs#stdenv.cc.cc.lib \
+            --command bash -c '
+              export LD_LIBRARY_PATH=$(nix eval --raw nixpkgs#stdenv.cc.cc.lib)/lib:$LD_LIBRARY_PATH
+              uv run pytest tests/integration/test_devenv.py -v
             '
