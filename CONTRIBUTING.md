@@ -7,7 +7,7 @@ Thank you for your interest in contributing!
 You need [Nix](https://nixos.org/download) with flakes enabled and [direnv](https://direnv.net/).
 
 ```bash
-git clone https://github.com/Jahysama/nix-ml-solo
+git clone https://github.com/thatbagu/nix-ml-solo
 cd nix-ml-solo
 direnv allow
 ```
@@ -41,6 +41,7 @@ The devenv shell activates automatically. All tools (tofu, gum, mutagen, aws-nuk
 ## Reporting bugs
 
 Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md). Include:
+
 - Your OS and Nix version (`nix --version`)
 - The exact command you ran
 - Full output (paste as text, not a screenshot)

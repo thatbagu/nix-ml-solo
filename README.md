@@ -2,7 +2,7 @@
 
 Solo ML stack on AWS. Reproducible environments via Nix, experiment tracking via MLflow, data versioning via DVC, training on EC2 or SageMaker.
 
-**[Documentation](https://jahysama.github.io/nix-ml-solo/)**
+**[Documentation](https://thatbagu.github.io/nix-ml-solo/)**
 
 ## How it works
 
@@ -13,9 +13,9 @@ Solo ML stack on AWS. Reproducible environments via Nix, experiment tracking via
 - **Experiments** — MLflow on EC2, SSH tunnel to localhost (laptop + SageMaker log to the same server)
 - **Data** — DVC remote on S3 (laptop ↔ SageMaker)
 
-The result: if your training script runs locally, it runs on SageMaker, because the Nix closure that built the environment is bit-for-bit identical. No Dockerfiles to maintain, no requirements.txt divergence."
+The result: if your training script runs locally, it runs on SageMaker, because the Nix closure that built the environment is bit-for-bit identical. No Dockerfiles to maintain, no requirements.txt divergence.
 
-See the [architecture diagram](docs/architecture.md) for a full C4 container view.
+See the [architecture diagram](https://thatbagu.github.io/nix-ml-solo/architecture.html) for a full view.
 
 ## From zero to first run
 
