@@ -3,6 +3,7 @@
 Solo ML stack on AWS. Reproducible environments via Nix, experiment tracking via MLflow, data versioning via DVC, training on EC2 or SageMaker.
 
 [![CI](https://github.com/thatbagu/nix-ml-solo/actions/workflows/lint.yml/badge.svg)](https://github.com/thatbagu/nix-ml-solo/actions/workflows/lint.yml)
+[![Tests](https://github.com/thatbagu/nix-ml-solo/actions/workflows/test.yml/badge.svg)](https://github.com/thatbagu/nix-ml-solo/actions/workflows/test.yml)
 [![Version](https://img.shields.io/github/v/release/thatbagu/nix-ml-solo?color=green&label=version&sort=semver)](https://github.com/thatbagu/nix-ml-solo/releases)
 [![License](https://img.shields.io/github/license/thatbagu/nix-ml-solo)](LICENSE)
 [![Built with devenv](https://devenv.sh/assets/devenv-badge.svg)](https://devenv.sh)
