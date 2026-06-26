@@ -19,21 +19,21 @@ This eliminates the "works on my machine" problem for ML: if your training scrip
 flowchart TB
     dev(["ML Engineer"])
 
-    subgraph env ["One Nix environment &mdash; devenv.nix"]
+    subgraph env ["One Nix environment — devenv.nix"]
         direction LR
-        local["Local shell\n─────────────\ndevenv · Nix · Python"]
-        ec2["EC2 NixOS VM\n─────────────\nMLflow server"]
-        sm["SageMaker\n─────────────\ntraining · inference"]
+        local["Local shell<br/>devenv / Nix / Python"]
+        ec2["EC2 NixOS VM<br/>MLflow server"]
+        sm["SageMaker<br/>training / inference"]
     end
 
-    mlflow[("MLflow\nexperiments")]
-    dvc[("DVC · S3\ntraining data")]
-    nixcache[("S3 Nix cache\nbinary store")]
+    mlflow[("MLflow<br/>experiments")]
+    dvc[("DVC / S3<br/>training data")]
+    nixcache[("S3 Nix cache<br/>binary store")]
 
     dev --> local
 
-    local <-->|"mutagen\nfile sync"| ec2
-    ec2 -. "hosts" .-> mlflow
+    local <-->|"mutagen file sync"| ec2
+    ec2 -. hosts .-> mlflow
     local -->|"SSH tunnel"| mlflow
     sm -->|"log metrics"| mlflow
 
