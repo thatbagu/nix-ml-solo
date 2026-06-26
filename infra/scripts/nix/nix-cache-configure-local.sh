@@ -9,9 +9,11 @@ mkdir -p "$(dirname "$NIX_CONF")"
 if grep -q "$BUCKET" "$NIX_CONF" 2>/dev/null; then
   echo "S3 substituter already in $NIX_CONF — nothing to do."
 else
-  echo "" >> "$NIX_CONF"
-  echo "# nix-ml-solo S3 binary cache" >> "$NIX_CONF"
-  echo "extra-substituters = s3://$BUCKET?region=$REGION" >> "$NIX_CONF"
+  {
+    echo ""
+    echo "# nix-ml-solo S3 binary cache"
+    echo "extra-substituters = s3://$BUCKET?region=$REGION"
+  } >>"$NIX_CONF"
   echo "Appended s3://$BUCKET to $NIX_CONF"
   echo "Restart nix-daemon if needed: sudo systemctl restart nix-daemon"
 fi

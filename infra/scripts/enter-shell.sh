@@ -7,16 +7,21 @@ LOCAL_ENV="$CONFIGS/local.env"
 mkdir -p "$CONFIGS/.aws"
 
 if [ -f "$DEVENV_ROOT/.devenv/load" ]; then
-  set -a; source "$DEVENV_ROOT/.devenv/load"; set +a
+  set -a
+  source "$DEVENV_ROOT/.devenv/load"
+  set +a
 fi
 
-[ -f "$LOCAL_ENV" ] && { set -a; source "$LOCAL_ENV"; set +a; }
+[ -f "$LOCAL_ENV" ] && {
+  set -a
+  source "$LOCAL_ENV"
+  set +a
+}
 
 alias terraform=tofu
 
 source "$DEVENV_ROOT/infra/scripts/_lib.sh"
 source "$DEVENV_ROOT/infra/scripts/_wizard.sh"
-
 
 # Export nixpkgs pins from devenv.lock so Terraform can pin EC2 to the same nixpkgs.
 _sync_devenv_lock_pins

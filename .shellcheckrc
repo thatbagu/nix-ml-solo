@@ -1,0 +1,3 @@
+shell=bash
+# SC1090/SC1091: dynamic source paths like source "$DEVENV_ROOT/..." are intentional.
+disable=SC1090,SC1091

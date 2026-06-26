@@ -1,0 +1,30 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v14
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: shellcheck
+        run: find infra -name '*.sh' | xargs nix run nixpkgs#shellcheck --
+
+      - name: shfmt (check)
+        run: find infra -name '*.sh' | xargs nix run nixpkgs#shfmt -- -d -i 2
+
+      - name: nixpkgs-fmt (check)
+        run: |
+          nix run nixpkgs#nixpkgs-fmt -- --check \
+            devenv.nix \
+            infra/devenv.nix \
+            infra/scripts.nix \
+            infra/container/base.nix

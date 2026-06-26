@@ -2,6 +2,7 @@
 .devenv-configs/
 .direnv/
 backups/
+.venv/
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
@@ -18,3 +19,4 @@ infra/terraform/modules/state-bootstrap/.terraform/
 infra/terraform/modules/state-bootstrap/.terraform.lock.hcl
 infra/terraform/modules/state-bootstrap/terraform.tfstate
 infra/terraform/modules/state-bootstrap/terraform.tfstate.backup
+docs/book/

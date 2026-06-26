@@ -9,7 +9,8 @@ SCRIPT="${1:-${TRAINING_SCRIPT:-}}"
 [ $# -gt 0 ] && shift
 [ "${1:-}" = "--" ] && shift
 if [ -z "$SCRIPT" ]; then
-  echo "Usage: train-on-ec2 <script.py|notebook.ipynb> [-- args...]" >&2; exit 1
+  echo "Usage: train-on-ec2 <script.py|notebook.ipynb> [-- args...]" >&2
+  exit 1
 fi
 
 EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
@@ -21,19 +22,19 @@ echo "  MLflow : http://localhost:${MLFLOW_PORT:-5000}"
 echo ""
 
 case "$SCRIPT" in
-  *.ipynb)
-    OUT="${SCRIPT%.ipynb}-executed.ipynb"
-    $SSH "ml@$EC2_IP" "
+*.ipynb)
+  OUT="${SCRIPT%.ipynb}-executed.ipynb"
+  $SSH "ml@$EC2_IP" "
       cd ~/project
       MLFLOW_TRACKING_URI=http://localhost:${MLFLOW_PORT:-5000} \
       DVC_REMOTE_URL=$EC2_DVC \
       devenv shell -- uv run papermill '$SCRIPT' '$OUT' $*"
-    ;;
-  *)
-    $SSH "ml@$EC2_IP" "
+  ;;
+*)
+  $SSH "ml@$EC2_IP" "
       cd ~/project
       MLFLOW_TRACKING_URI=http://localhost:${MLFLOW_PORT:-5000} \
       DVC_REMOTE_URL=$EC2_DVC \
       devenv shell -- uv run python '$SCRIPT' $*"
-    ;;
+  ;;
 esac

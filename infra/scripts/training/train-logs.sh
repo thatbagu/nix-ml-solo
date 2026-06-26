@@ -6,7 +6,8 @@ _require_cloud
 
 JOB="${1:-}"
 if [ -z "$JOB" ]; then
-  echo "Usage: train-logs <job-name>" >&2; exit 1
+  echo "Usage: train-logs <job-name>" >&2
+  exit 1
 fi
 
 aws logs tail "/aws/sagemaker/TrainingJobs" \

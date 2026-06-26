@@ -2,10 +2,10 @@ let
   # ── Single source of truth ────────────────────────────────────────────────────
   # Edit here; everything else (Terraform names, S3 URIs, ports, banners) derives
   # from these values automatically.
-  project      = "nix-ml-solo";
-  environment  = "dev";
-  mlflowPort   = 5000;
-  jupyterPort  = 8888;
+  project = "nix-ml-solo";
+  environment = "dev";
+  mlflowPort = 5000;
+  jupyterPort = 8888;
   inferencePort = 5001;
 in
 
@@ -40,18 +40,18 @@ in
   env = {
     # Project identity — flows into Terraform resource names, S3 bucket names,
     # mutagen session names, SSH host aliases, and script banners.
-    TF_VAR_project     = project;
+    TF_VAR_project = project;
     TF_VAR_environment = environment;
 
     # Ports — all scripts read these instead of hardcoding numbers.
     TF_VAR_mlflow_port = toString mlflowPort;
-    MLFLOW_PORT        = toString mlflowPort;
-    JUPYTER_PORT       = toString jupyterPort;
-    INFERENCE_PORT     = toString inferencePort;
+    MLFLOW_PORT = toString mlflowPort;
+    JUPYTER_PORT = toString jupyterPort;
+    INFERENCE_PORT = toString inferencePort;
 
     # Derived from project + environment + ports above.
     MLFLOW_TRACKING_URI = "http://localhost:${toString mlflowPort}";
-    DVC_REMOTE_URL      = "s3://${project}-${environment}-dvc/dvc";
+    DVC_REMOTE_URL = "s3://${project}-${environment}-dvc/dvc";
 
     # Inference script for cloud deploy — edit src/inference.py to match your model
     INFERENCE_SCRIPT = "src/inference.py";
@@ -63,6 +63,18 @@ in
 
     # Set your default training script (or pass it to train directly)
     # TRAINING_SCRIPT = "src/train.py";
+  };
+
+  # ── Pre-commit hooks ─────────────────────────────────────────────────────────
+  # Installed automatically on `direnv allow`. Runs before every commit.
+
+  pre-commit.hooks = {
+    shellcheck.enable = true;
+    shfmt = {
+      enable = true;
+      settings.indent-size = 2;
+    };
+    nixpkgs-fmt.enable = true;
   };
 
   # ── Banner ───────────────────────────────────────────────────────────────────

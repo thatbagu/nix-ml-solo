@@ -13,7 +13,7 @@ EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
 # Write SSH config entry so mutagen can reach EC2 with the right key.
 # The IP is dynamic (changes on EC2 restart), so we regenerate each time.
 mkdir -p "$HOME/.ssh/config.d"
-cat > "$HOME/.ssh/config.d/${PROJECT}" <<EOF
+cat >"$HOME/.ssh/config.d/${PROJECT}" <<EOF
 Host ${SSH_HOST}
   HostName $EC2_IP
   User ml
@@ -24,9 +24,9 @@ EOF
 
 # Ensure ~/.ssh/config includes config.d (idempotent)
 if ! grep -q "Include config.d/\*" "$HOME/.ssh/config" 2>/dev/null; then
-  printf "Include config.d/*\n\n" | cat - "$HOME/.ssh/config" 2>/dev/null > /tmp/_sshcfg \
-    && mv /tmp/_sshcfg "$HOME/.ssh/config" \
-    || echo "Include config.d/*" > "$HOME/.ssh/config"
+  printf "Include config.d/*\n\n" | cat - "$HOME/.ssh/config" 2>/dev/null >/tmp/_sshcfg &&
+    mv /tmp/_sshcfg "$HOME/.ssh/config" ||
+    echo "Include config.d/*" >"$HOME/.ssh/config"
 fi
 
 # Terminate any existing session and recreate (handles IP changes after restart)

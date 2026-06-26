@@ -26,64 +26,64 @@ _is_notebook() { [[ "$1" == *.ipynb ]]; }
 
 case "$MODE" in
 
-  # ── Local ──────────────────────────────────────────────────────────────────
-  local)
-    echo "▶ Training locally: $SCRIPT $*"
-    echo "  MLflow : $MLFLOW_TRACKING_URI"
-    echo "  DVC    : $DVC_REMOTE_URL"
-    echo ""
+# ── Local ──────────────────────────────────────────────────────────────────
+local)
+  echo "▶ Training locally: $SCRIPT $*"
+  echo "  MLflow : $MLFLOW_TRACKING_URI"
+  echo "  DVC    : $DVC_REMOTE_URL"
+  echo ""
 
-    if ! curl -sf "${MLFLOW_TRACKING_URI}/health" > /dev/null 2>&1; then
-      echo "  MLflow is not running. Start it with: mlflow-start" >&2
-      exit 1
-    fi
+  if ! curl -sf "${MLFLOW_TRACKING_URI}/health" >/dev/null 2>&1; then
+    echo "  MLflow is not running. Start it with: mlflow-start" >&2
+    exit 1
+  fi
 
-    if _is_notebook "$SCRIPT"; then
-      OUT="${SCRIPT%.ipynb}-executed.ipynb"
-      echo "  Running notebook via papermill → $OUT"
-      uv run papermill "$SCRIPT" "$OUT" "$@"
-    else
-      uv run python "$SCRIPT" "$@"
-    fi
-    ;;
+  if _is_notebook "$SCRIPT"; then
+    OUT="${SCRIPT%.ipynb}-executed.ipynb"
+    echo "  Running notebook via papermill → $OUT"
+    uv run papermill "$SCRIPT" "$OUT" "$@"
+  else
+    uv run python "$SCRIPT" "$@"
+  fi
+  ;;
 
-  # ── Cloud ──────────────────────────────────────────────────────────────────
-  cloud)
-    # Auto-ensure file sync is running
-    if ! mutagen sync list "${TF_VAR_project:-nix-ml-solo}" 2>/dev/null | grep -q "Watching"; then
-      echo "[ train ] file sync not running — starting..."
-      sync-ec2
-    fi
+# ── Cloud ──────────────────────────────────────────────────────────────────
+cloud)
+  # Auto-ensure file sync is running
+  if ! mutagen sync list "${TF_VAR_project:-nix-ml-solo}" 2>/dev/null | grep -q "Watching"; then
+    echo "[ train ] file sync not running — starting..."
+    sync-ec2
+  fi
 
-    # Auto-ensure MLflow tunnel is open
-    if ! curl -sf "http://localhost:${MLFLOW_PORT:-5000}/health" > /dev/null 2>&1; then
-      echo "[ train ] MLflow tunnel not open — connecting..."
-      mlflow-open
-    fi
+  # Auto-ensure MLflow tunnel is open
+  if ! curl -sf "http://localhost:${MLFLOW_PORT:-5000}/health" >/dev/null 2>&1; then
+    echo "[ train ] MLflow tunnel not open — connecting..."
+    mlflow-open
+  fi
 
-    SUFFIX="$(date +%Y%m%d-%H%M%S)"
-    INSTANCE="${SAGEMAKER_TRAINING_INSTANCE:-ml.m5.xlarge}"
-    REGION="$AWS_DEFAULT_REGION"
-    TF_DIR="$PROJECT_ROOT/infra/terraform"
+  SUFFIX="$(date +%Y%m%d-%H%M%S)"
+  INSTANCE="${SAGEMAKER_TRAINING_INSTANCE:-ml.m5.xlarge}"
+  REGION="$AWS_DEFAULT_REGION"
+  TF_DIR="$PROJECT_ROOT/infra/terraform"
 
-    DVC_BUCKET=$(cd "$TF_DIR" && tofu output -raw dvc_bucket_name)
-    NIX_BUCKET=$(cd "$TF_DIR" && tofu output -raw nix_cache_bucket)
-    ECR_URI=$(cd "$TF_DIR"    && tofu output -raw ecr_repo_uri)
-    EC2_IP=$(cd "$TF_DIR"     && tofu output -raw ec2_public_ip)
-    ROLE_ARN=$(aws iam list-roles \
-      --query "Roles[?contains(RoleName,'sagemaker')].Arn" \
-      --output text | awk '{print $1}')
+  DVC_BUCKET=$(cd "$TF_DIR" && tofu output -raw dvc_bucket_name)
+  NIX_BUCKET=$(cd "$TF_DIR" && tofu output -raw nix_cache_bucket)
+  ECR_URI=$(cd "$TF_DIR" && tofu output -raw ecr_repo_uri)
+  EC2_IP=$(cd "$TF_DIR" && tofu output -raw ec2_public_ip)
+  ROLE_ARN=$(aws iam list-roles \
+    --query "Roles[?contains(RoleName,'sagemaker')].Arn" \
+    --output text | awk '{print $1}')
 
-    JOB_NAME="${TF_VAR_project:-ml-solo}-${SUFFIX}"
-    EXTRA_ARGS="$*"
+  JOB_NAME="${TF_VAR_project:-ml-solo}-${SUFFIX}"
+  EXTRA_ARGS="$*"
 
-    # For notebooks, upload the .ipynb as a separate input channel so
-    # SageMaker copies it to /opt/ml/input/data/notebook/ inside the container.
-    if _is_notebook "$SCRIPT"; then
-      NOTEBOOK_S3="s3://$DVC_BUCKET/notebooks/$(basename "$SCRIPT")"
-      echo "  Uploading notebook to $NOTEBOOK_S3..."
-      aws s3 cp "$SCRIPT" "$NOTEBOOK_S3" --region "$REGION"
-      NOTEBOOK_CHANNEL=", {
+  # For notebooks, upload the .ipynb as a separate input channel so
+  # SageMaker copies it to /opt/ml/input/data/notebook/ inside the container.
+  if _is_notebook "$SCRIPT"; then
+    NOTEBOOK_S3="s3://$DVC_BUCKET/notebooks/$(basename "$SCRIPT")"
+    echo "  Uploading notebook to $NOTEBOOK_S3..."
+    aws s3 cp "$SCRIPT" "$NOTEBOOK_S3" --region "$REGION"
+    NOTEBOOK_CHANNEL=", {
         \"ChannelName\": \"notebook\",
         \"DataSource\": {
           \"S3DataSource\": {
@@ -93,28 +93,28 @@ case "$MODE" in
           }
         }
       }"
-      # Container will find the notebook at /opt/ml/input/data/notebook/<name>
-      CONTAINER_SCRIPT="/opt/ml/input/data/notebook/$(basename "$SCRIPT")"
-    else
-      NOTEBOOK_CHANNEL=""
-      CONTAINER_SCRIPT="$SCRIPT"
-    fi
+    # Container will find the notebook at /opt/ml/input/data/notebook/<name>
+    CONTAINER_SCRIPT="/opt/ml/input/data/notebook/$(basename "$SCRIPT")"
+  else
+    NOTEBOOK_CHANNEL=""
+    CONTAINER_SCRIPT="$SCRIPT"
+  fi
 
-    echo "▶ Submitting SageMaker training job: $JOB_NAME"
-    echo "  Script  : $SCRIPT"
-    echo "  Instance: $INSTANCE"
-    echo "  Image   : $ECR_URI:latest"
-    echo "  Data    : s3://$DVC_BUCKET/data/train/"
-    echo "  Output  : s3://$DVC_BUCKET/training-output/$JOB_NAME/"
-    echo "  MLflow  : http://$EC2_IP:${MLFLOW_PORT:-5000}"
-    echo ""
+  echo "▶ Submitting SageMaker training job: $JOB_NAME"
+  echo "  Script  : $SCRIPT"
+  echo "  Instance: $INSTANCE"
+  echo "  Image   : $ECR_URI:latest"
+  echo "  Data    : s3://$DVC_BUCKET/data/train/"
+  echo "  Output  : s3://$DVC_BUCKET/training-output/$JOB_NAME/"
+  echo "  MLflow  : http://$EC2_IP:${MLFLOW_PORT:-5000}"
+  echo ""
 
-    aws sagemaker create-training-job \
-      --region "$REGION" \
-      --training-job-name "$JOB_NAME" \
-      --algorithm-specification "TrainingImage=$ECR_URI:latest,TrainingInputMode=File" \
-      --role-arn "$ROLE_ARN" \
-      --input-data-config "[{
+  aws sagemaker create-training-job \
+    --region "$REGION" \
+    --training-job-name "$JOB_NAME" \
+    --algorithm-specification "TrainingImage=$ECR_URI:latest,TrainingInputMode=File" \
+    --role-arn "$ROLE_ARN" \
+    --input-data-config "[{
         \"ChannelName\": \"train\",
         \"DataSource\": {
           \"S3DataSource\": {
@@ -124,10 +124,10 @@ case "$MODE" in
           }
         }
       }$NOTEBOOK_CHANNEL]" \
-      --output-data-config "S3OutputPath=s3://$DVC_BUCKET/training-output/$JOB_NAME/" \
-      --resource-config "InstanceType=$INSTANCE,InstanceCount=1,VolumeSizeInGB=30" \
-      --stopping-condition "MaxRuntimeInSeconds=86400" \
-      --environment "{
+    --output-data-config "S3OutputPath=s3://$DVC_BUCKET/training-output/$JOB_NAME/" \
+    --resource-config "InstanceType=$INSTANCE,InstanceCount=1,VolumeSizeInGB=30" \
+    --stopping-condition "MaxRuntimeInSeconds=86400" \
+    --environment "{
         \"NIX_CACHE_BUCKET\":     \"$NIX_BUCKET\",
         \"AWS_DEFAULT_REGION\":   \"$REGION\",
         \"MLFLOW_TRACKING_URI\":  \"http://$EC2_IP:${MLFLOW_PORT:-5000}\",
@@ -135,16 +135,16 @@ case "$MODE" in
         \"TRAINING_SCRIPT_ARGS\": \"$EXTRA_ARGS\"
       }"
 
-    echo "Job submitted."
-    echo "  train-status $JOB_NAME"
-    echo "  train-logs   $JOB_NAME"
-    if _is_notebook "$SCRIPT"; then
-      echo "  Executed notebook: s3://$DVC_BUCKET/training-output/$JOB_NAME/output/executed.ipynb"
-    fi
-    ;;
+  echo "Job submitted."
+  echo "  train-status $JOB_NAME"
+  echo "  train-logs   $JOB_NAME"
+  if _is_notebook "$SCRIPT"; then
+    echo "  Executed notebook: s3://$DVC_BUCKET/training-output/$JOB_NAME/output/executed.ipynb"
+  fi
+  ;;
 
-  *)
-    echo "Unknown INFRA_MODE '$MODE'. Set to 'local' or 'cloud'." >&2
-    exit 1
-    ;;
+*)
+  echo "Unknown INFRA_MODE '$MODE'. Set to 'local' or 'cloud'." >&2
+  exit 1
+  ;;
 esac

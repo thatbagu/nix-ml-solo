@@ -6,13 +6,15 @@
 
 _require_cloud() {
   if [ "${INFRA_MODE:-local}" != "cloud" ]; then
-    echo "Error: this command requires cloud mode (INFRA_MODE=cloud)." >&2; exit 1
+    echo "Error: this command requires cloud mode (INFRA_MODE=cloud)." >&2
+    exit 1
   fi
 }
 
 _require_ssh() {
   if [ -z "${SSH_IDENTITY_FILE:-}" ] || [ ! -f "$SSH_IDENTITY_FILE" ]; then
-    echo "Error: SSH_IDENTITY_FILE not set or missing. Run 'setup'." >&2; exit 1
+    echo "Error: SSH_IDENTITY_FILE not set or missing. Run 'setup'." >&2
+    exit 1
   fi
 }
 
@@ -24,7 +26,7 @@ _save() {
   if grep -q "^export ${var}=" "$LOCAL_ENV" 2>/dev/null; then
     sed -i.bak "s|^export ${var}=.*|export ${var}=\"${value}\"|" "$LOCAL_ENV" && rm -f "$LOCAL_ENV.bak"
   else
-    echo "export ${var}=\"${value}\"" >> "$LOCAL_ENV"
+    echo "export ${var}=\"${value}\"" >>"$LOCAL_ENV"
   fi
 }
 
@@ -42,7 +44,7 @@ _write_iam_profile() {
   local cfg="$CONFIGS/.aws/config"
   local creds="$CONFIGS/.aws/credentials"
   if ! grep -q "\[profile ${profile}\]" "$cfg" 2>/dev/null; then
-    cat >> "$cfg" <<EOF
+    cat >>"$cfg" <<EOF
 
 [profile ${profile}]
 region = ${region}
@@ -50,7 +52,7 @@ output = json
 EOF
   fi
   if ! grep -q "\[${profile}\]" "$creds" 2>/dev/null; then
-    cat >> "$creds" <<EOF
+    cat >>"$creds" <<EOF
 
 [${profile}]
 aws_access_key_id = ${key_id}
@@ -63,7 +65,7 @@ _write_sso_profile() {
   local profile="$1" sso_url="$2" sso_region="$3" account_id="$4" role="$5" region="$6"
   local cfg="$CONFIGS/.aws/config"
   if ! grep -q "\[profile ${profile}\]" "$cfg" 2>/dev/null; then
-    cat >> "$cfg" <<EOF
+    cat >>"$cfg" <<EOF
 
 [profile ${profile}]
 sso_start_url = ${sso_url}
@@ -94,13 +96,17 @@ _VALID_AWS_REGIONS=(
   sa-east-1
 )
 
-_valid_region()       { local r="$1"; for region in "${_VALID_AWS_REGIONS[@]}"; do [ "$r" = "$region" ] && return 0; done; return 1; }
+_valid_region() {
+  local r="$1"
+  for region in "${_VALID_AWS_REGIONS[@]}"; do [ "$r" = "$region" ] && return 0; done
+  return 1
+}
 _valid_project_name() { [[ "$1" =~ ^[a-z][a-z0-9-]{2,62}$ ]]; }
 _valid_profile_name() { [[ "$1" =~ ^[a-zA-Z][a-zA-Z0-9_-]{1,63}$ ]]; }
-_valid_ec2_type()     { [[ "$1" =~ ^[a-z][a-z0-9]+(\.metal|(\.[0-9]*x?large|\.medium|\.small|\.micro|\.nano))$ ]]; }
-_valid_aws_key_id()   { [[ "$1" =~ ^(AKIA|ASIA)[A-Z0-9]{16}$ ]]; }
-_valid_account_id()   { [[ "$1" =~ ^[0-9]{12}$ ]]; }
-_valid_https_url()    { [[ "$1" =~ ^https:// ]]; }
+_valid_ec2_type() { [[ "$1" =~ ^[a-z][a-z0-9]+(\.metal|(\.[0-9]*x?large|\.medium|\.small|\.micro|\.nano))$ ]]; }
+_valid_aws_key_id() { [[ "$1" =~ ^(AKIA|ASIA)[A-Z0-9]{16}$ ]]; }
+_valid_account_id() { [[ "$1" =~ ^[0-9]{12}$ ]]; }
+_valid_https_url() { [[ "$1" =~ ^https:// ]]; }
 
 # ── gum-backed prompt helpers ──────────────────────────────────────────────────
 
@@ -146,7 +152,7 @@ _gum_region() {
   local var="$1" header="$2" default="$3"
   _already_set "$var" "$default" && return
   local value
-  value=$(printf '%s\n' "${_VALID_AWS_REGIONS[@]}" | \
+  value=$(printf '%s\n' "${_VALID_AWS_REGIONS[@]}" |
     gum filter \
       --header "$header" \
       --placeholder "type to search…" \
@@ -181,7 +187,7 @@ _init_dvc() {
   DVC=$(command -v dvc 2>/dev/null || echo "uv run dvc")
   echo "Initializing DVC…"
   (
-    cd "$DEVENV_ROOT"
+    cd "$DEVENV_ROOT" || return 1
     $DVC init --quiet
     $DVC remote add -d myremote "$DVC_REMOTE_URL"
     $DVC remote modify myremote region "${AWS_DEFAULT_REGION:-us-east-1}"

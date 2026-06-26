@@ -1,9 +1,8 @@
 # touch
-{
-  pkgs,
-  lib ? pkgs.lib,
-  config,
-  ...
+{ pkgs
+, lib ? pkgs.lib
+, config
+, ...
 }:
 
 let
@@ -16,13 +15,13 @@ in
   # Infra tooling — local only. Not pushed to EC2.
   # Shared DS/ML packages live in root devenv.nix.
   packages = [
-    pkgs.tenv      # Terraform/OpenTofu version manager
-    pkgs.jq        # JSON CLI
-    pkgs.crane     # Layer append/mutate and manifest format conversion
-    pkgs.skopeo    # Push nixpkgs buildLayeredImage tarballs to ECR (crane can't parse them)
-    pkgs.gum       # TUI prompts for setup wizard
-    pkgs.mutagen   # Bidirectional real-time sync local <-> EC2
-    pkgs.aws-nuke  # Nuclear teardown — deletes all AWS resources in the account
+    pkgs.tenv # Terraform/OpenTofu version manager
+    pkgs.jq # JSON CLI
+    pkgs.crane # Layer append/mutate and manifest format conversion
+    pkgs.skopeo # Push nixpkgs buildLayeredImage tarballs to ECR (crane can't parse them)
+    pkgs.gum # TUI prompts for setup wizard
+    pkgs.mutagen # Bidirectional real-time sync local <-> EC2
+    pkgs.aws-nuke # Nuclear teardown — deletes all AWS resources in the account
   ];
 
   env = {
@@ -68,28 +67,28 @@ in
     # Override any of these in root devenv.nix to customise the endpoint.
 
     # Instance type for inference. GPU options: ml.g4dn.xlarge, ml.g5.xlarge
-    TF_VAR_sagemaker_instance_type  = lib.mkDefault "ml.t2.medium";
+    TF_VAR_sagemaker_instance_type = lib.mkDefault "ml.t2.medium";
     # Instance type for SageMaker training jobs
-    SAGEMAKER_TRAINING_INSTANCE     = lib.mkDefault "ml.m5.xlarge";
+    SAGEMAKER_TRAINING_INSTANCE = lib.mkDefault "ml.m5.xlarge";
     # Number of instances to start with
     TF_VAR_sagemaker_instance_count = lib.mkDefault "1";
 
     # Auto-scaling: set min_capacity > 0 to enable.
     # Scale metric: SageMakerVariantInvocationsPerInstance (requests/min per instance)
-    TF_VAR_sagemaker_min_capacity                      = lib.mkDefault "0";   # 0 = disabled
-    TF_VAR_sagemaker_max_capacity                      = lib.mkDefault "4";
-    TF_VAR_sagemaker_target_invocations_per_instance   = lib.mkDefault "100";
-    TF_VAR_sagemaker_scale_out_cooldown                = lib.mkDefault "60";
-    TF_VAR_sagemaker_scale_in_cooldown                 = lib.mkDefault "300";
+    TF_VAR_sagemaker_min_capacity = lib.mkDefault "0"; # 0 = disabled
+    TF_VAR_sagemaker_max_capacity = lib.mkDefault "4";
+    TF_VAR_sagemaker_target_invocations_per_instance = lib.mkDefault "100";
+    TF_VAR_sagemaker_scale_out_cooldown = lib.mkDefault "60";
+    TF_VAR_sagemaker_scale_in_cooldown = lib.mkDefault "300";
 
-    TF_VAR_sagemaker_model_image_uri    = lib.mkDefault "";
-    TF_VAR_sagemaker_model_s3_uri       = lib.mkDefault "";
+    TF_VAR_sagemaker_model_image_uri = lib.mkDefault "";
+    TF_VAR_sagemaker_model_s3_uri = lib.mkDefault "";
     TF_VAR_sagemaker_training_image_uri = lib.mkDefault "";
 
     # Set to "true" to expose the endpoint via API Gateway (no AWS auth required).
     # false = private (access via AWS SDK/CLI with IAM only)
     # true  = public (HTTPS URL callable by anyone)
-    TF_VAR_sagemaker_public_endpoint        = lib.mkDefault "false";
+    TF_VAR_sagemaker_public_endpoint = lib.mkDefault "false";
     TF_VAR_sagemaker_public_endpoint_binary = lib.mkDefault "false";
 
     # Deployment strategy for endpoint updates.
@@ -97,9 +96,9 @@ in
     # canary     — small % first (canary_percent), then full cutover after wait
     # linear     — shift traffic in equal steps (linear_step_percent) with wait between each
     # shadow     — requires separate shadow variant setup; not configured here
-    TF_VAR_sagemaker_deployment_strategy              = lib.mkDefault "blue_green";
-    TF_VAR_sagemaker_deployment_canary_percent        = lib.mkDefault "10";
-    TF_VAR_sagemaker_deployment_linear_step_percent   = lib.mkDefault "25";
+    TF_VAR_sagemaker_deployment_strategy = lib.mkDefault "blue_green";
+    TF_VAR_sagemaker_deployment_canary_percent = lib.mkDefault "10";
+    TF_VAR_sagemaker_deployment_linear_step_percent = lib.mkDefault "25";
     TF_VAR_sagemaker_deployment_wait_interval_seconds = lib.mkDefault "300";
 
     # Set by the setup wizard into .devenv-configs/local.env:

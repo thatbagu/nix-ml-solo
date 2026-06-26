@@ -10,7 +10,7 @@ REGION="${TF_VAR_aws_region:-us-east-1}"
 
 BACKEND_CFG="$PROJECT_ROOT/infra/terraform/backend.tfvars"
 
-cat > "$BACKEND_CFG" <<EOF
+cat >"$BACKEND_CFG" <<EOF
 bucket         = "${PROJECT}-${ENV}-tfstate"
 key            = "${PROJECT}/terraform.tfstate"
 region         = "${REGION}"

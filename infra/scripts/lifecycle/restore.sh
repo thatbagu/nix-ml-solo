@@ -43,8 +43,8 @@ if [ -d "$BACKUP_DIR/mlflow" ] && [ -n "$(ls -A "$BACKUP_DIR/mlflow" 2>/dev/null
   echo ""
   if gum confirm "  Restore MLflow experiments to EC2?" --default=true; then
     echo "  Pushing MLflow data → ml@$EC2_IP..."
-    tar czf - -C "$BACKUP_DIR/mlflow" . \
-      | $SSH "ml@$EC2_IP" "tar xzf - -C /home/ml/"
+    tar czf - -C "$BACKUP_DIR/mlflow" . |
+      $SSH "ml@$EC2_IP" "tar xzf - -C /home/ml/"
     echo "  MLflow experiments restored."
   fi
 else

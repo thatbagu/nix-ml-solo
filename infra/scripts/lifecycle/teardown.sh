@@ -8,7 +8,7 @@ _require_cloud
 
 # Verify AWS credentials are alive before proceeding.
 # If they're dead (e.g. aws-nuke deleted keys in a prior run), warn and exit early.
-if ! aws sts get-caller-identity > /dev/null 2>&1; then
+if ! aws sts get-caller-identity >/dev/null 2>&1; then
   echo "" >&2
   echo "  Error: AWS credentials are invalid or expired." >&2
   echo "  Run 'setup' to generate fresh credentials, then re-run teardown." >&2
@@ -25,8 +25,8 @@ EC2_IP=$(cd "$TF_DIR" && tofu output -raw ec2_public_ip 2>/dev/null || true)
 
 _s3_size() {
   aws s3 ls "s3://$1" --recursive --human-readable --summarize \
-    --region "$REGION" 2>/dev/null \
-    | grep "Total Size" | sed 's/.*Total Size: //' || echo "unknown"
+    --region "$REGION" 2>/dev/null |
+    grep "Total Size" | sed 's/.*Total Size: //' || echo "unknown"
 }
 
 echo ""
@@ -55,8 +55,8 @@ if [ -n "$EC2_IP" ] && [ -n "${SSH_IDENTITY_FILE:-}" ] && [ -f "${SSH_IDENTITY_F
   SSH="ssh -i $SSH_IDENTITY_FILE -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10"
 
   $SSH "ml@$EC2_IP" \
-    "tar czf - -C /home/ml mlflow.db mlflow.db-shm mlflow.db-wal 2>/dev/null" \
-    | tar xzf - -C "$BACKUP_DIR/mlflow/" 2>/dev/null || true
+    "tar czf - -C /home/ml mlflow.db mlflow.db-shm mlflow.db-wal 2>/dev/null" |
+    tar xzf - -C "$BACKUP_DIR/mlflow/" 2>/dev/null || true
 
   MLFLOW_SIZE=$(du -sh "$BACKUP_DIR/mlflow/" 2>/dev/null | cut -f1 || echo "0")
   echo "  MLflow backed up → $BACKUP_DIR/mlflow/  ($MLFLOW_SIZE)"
@@ -83,7 +83,7 @@ jq -n \
   --argjson dvc_pulled "$DVC_PULLED" \
   --arg git_commit "$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")" \
   '{timestamp: $timestamp, dvc_bucket: $dvc_bucket, ec2_ip: $ec2_ip, dvc_pulled: $dvc_pulled, git_commit: $git_commit}' \
-  > "$BACKUP_DIR/meta.json"
+  >"$BACKUP_DIR/meta.json"
 
 echo ""
 echo "  Backup saved → $BACKUP_DIR"
@@ -160,16 +160,19 @@ if [ -n "${SG_ID:-}" ] && [ "$SG_ID" != "None" ]; then
       --output json --region "$REGION" 2>/dev/null || echo "[]")
 
     ENI_COUNT=$(echo "$ENIS" | jq 'length')
-    [ "${ENI_COUNT:-0}" -eq 0 ] && { echo "  ENIs cleared."; break; }
+    [ "${ENI_COUNT:-0}" -eq 0 ] && {
+      echo "  ENIs cleared."
+      break
+    }
 
     # Delete any available (orphaned) ENIs immediately rather than waiting.
-    echo "$ENIS" | jq -r '.[] | select(.Status=="available") | .Id' \
-      | while read -r ENI_ID; do
-          [ -z "$ENI_ID" ] && continue
-          echo "  Deleting orphaned ENI $ENI_ID..."
-          aws ec2 delete-network-interface \
-            --network-interface-id "$ENI_ID" --region "$REGION" 2>/dev/null || true
-        done
+    echo "$ENIS" | jq -r '.[] | select(.Status=="available") | .Id' |
+      while read -r ENI_ID; do
+        [ -z "$ENI_ID" ] && continue
+        echo "  Deleting orphaned ENI $ENI_ID..."
+        aws ec2 delete-network-interface \
+          --network-interface-id "$ENI_ID" --region "$REGION" 2>/dev/null || true
+      done
 
     printf "  %s ENI(s) in-use — waiting for AWS cleanup (%s/24)…\r" "$ENI_COUNT" "$i"
     sleep 15
@@ -186,7 +189,7 @@ if [ "$IMAGE_IDS" != "[]" ] && [ "$IMAGE_IDS" != "null" ]; then
   echo "  [4/4] draining ECR repo $ECR_REPO..."
   aws ecr batch-delete-image \
     --repository-name "$ECR_REPO" --region "$REGION" \
-    --image-ids "$IMAGE_IDS" > /dev/null
+    --image-ids "$IMAGE_IDS" >/dev/null
 fi
 
 # Terraform destroy — handles ordered deletion of state-managed resources.
@@ -209,11 +212,11 @@ if [ -n "$ACCOUNT_ID" ] && command -v aws-nuke &>/dev/null; then
   # Exclude the IAM user running this script — aws-nuke would otherwise delete
   # its own access keys mid-run, causing all subsequent API calls to fail with
   # InvalidAccessKeyId and leaving the S3 state bucket and the user itself behind.
-  CALLER_USER=$(aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null \
-    | sed 's|.*/||' || echo "")
+  CALLER_USER=$(aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null |
+    sed 's|.*/||' || echo "")
 
   NUKE_CONFIG=$(mktemp --suffix=.yaml)
-  cat > "$NUKE_CONFIG" <<YAML
+  cat >"$NUKE_CONFIG" <<YAML
 regions:
   - ${REGION}
   - global
@@ -246,22 +249,22 @@ YAML
   # Now that nuke is done (and the deploy user still has valid credentials),
   # delete the wizard-created IAM user explicitly as the final step.
   DEPLOY_USER="${PROJECT}-deploy"
-  if aws iam get-user --user-name "$DEPLOY_USER" > /dev/null 2>&1; then
+  if aws iam get-user --user-name "$DEPLOY_USER" >/dev/null 2>&1; then
     echo "  Deleting IAM user $DEPLOY_USER..."
     # Detach policies
     aws iam list-attached-user-policies --user-name "$DEPLOY_USER" \
-      --query 'AttachedPolicies[*].PolicyArn' --output text 2>/dev/null \
-      | tr '\t' '\n' | while read -r arn; do
-          [ -z "$arn" ] && continue
-          aws iam detach-user-policy --user-name "$DEPLOY_USER" --policy-arn "$arn" 2>/dev/null || true
-        done
+      --query 'AttachedPolicies[*].PolicyArn' --output text 2>/dev/null |
+      tr '\t' '\n' | while read -r arn; do
+      [ -z "$arn" ] && continue
+      aws iam detach-user-policy --user-name "$DEPLOY_USER" --policy-arn "$arn" 2>/dev/null || true
+    done
     # Delete access keys
     aws iam list-access-keys --user-name "$DEPLOY_USER" \
-      --query 'AccessKeyMetadata[*].AccessKeyId' --output text 2>/dev/null \
-      | tr '\t' '\n' | while read -r key; do
-          [ -z "$key" ] && continue
-          aws iam delete-access-key --user-name "$DEPLOY_USER" --access-key-id "$key" 2>/dev/null || true
-        done
+      --query 'AccessKeyMetadata[*].AccessKeyId' --output text 2>/dev/null |
+      tr '\t' '\n' | while read -r key; do
+      [ -z "$key" ] && continue
+      aws iam delete-access-key --user-name "$DEPLOY_USER" --access-key-id "$key" 2>/dev/null || true
+    done
     aws iam delete-user --user-name "$DEPLOY_USER" 2>/dev/null || true
     echo "  IAM user $DEPLOY_USER deleted."
   fi

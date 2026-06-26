@@ -4,16 +4,18 @@
 # Cold start = Docker layer pull (parallel, cached) + uv sync (~1-2 min).
 { nixpkgs_rev, nixpkgs_nar_hash, devenv_profile }:
 let
-  pkgs = import (builtins.fetchTarball {
-    url    = "https://github.com/NixOS/nixpkgs/archive/${nixpkgs_rev}.tar.gz";
-    sha256 = nixpkgs_nar_hash;
-  }) { system = "x86_64-linux"; };
+  pkgs = import
+    (builtins.fetchTarball {
+      url = "https://github.com/NixOS/nixpkgs/archive/${nixpkgs_rev}.tar.gz";
+      sha256 = nixpkgs_nar_hash;
+    })
+    { system = "x86_64-linux"; };
 
   profile = builtins.storePath devenv_profile;
 in
 pkgs.dockerTools.buildLayeredImage {
-  name     = "ml-solo-base";
-  tag      = builtins.substring 0 8 nixpkgs_rev;
+  name = "ml-solo-base";
+  tag = builtins.substring 0 8 nixpkgs_rev;
 
   # Each package in the devenv profile closure gets its own Docker layer.
   # Only layers whose content hash changed are re-pushed to ECR.

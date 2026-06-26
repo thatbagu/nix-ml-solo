@@ -20,7 +20,7 @@ if [ "$MODE" = "cloud" ]; then
   EC2_IP=$(cd "$TF_DIR" && tofu output -raw ec2_public_ip 2>/dev/null || echo "")
   if [ -n "$EC2_IP" ]; then
     if ssh -i "$SSH_IDENTITY_FILE" -o BatchMode=yes -o ConnectTimeout=5 \
-        -o StrictHostKeyChecking=no "ml@$EC2_IP" true 2>/dev/null; then
+      -o StrictHostKeyChecking=no "ml@$EC2_IP" true 2>/dev/null; then
       echo "  EC2           ✓  $EC2_IP"
     else
       echo "  EC2           ✗  $EC2_IP (unreachable)"
@@ -37,7 +37,7 @@ if [ "$MODE" = "cloud" ]; then
   fi
 
   # MLflow tunnel
-  if curl -sf "${MLFLOW_URL}/health" > /dev/null 2>&1; then
+  if curl -sf "${MLFLOW_URL}/health" >/dev/null 2>&1; then
     echo "  MLflow        ✓  ${MLFLOW_URL}"
   else
     echo "  MLflow        ✗  tunnel not open  (run: mlflow-open)"
@@ -58,20 +58,20 @@ if [ "$MODE" = "cloud" ]; then
     --query 'EndpointStatus' \
     --output text 2>/dev/null || echo "NotDeployed")
   case "$EP_STATUS" in
-    InService)   echo "  Endpoint      ✓  $ENDPOINT (InService)" ;;
-    NotDeployed) echo "  Endpoint      —  not deployed" ;;
-    *)           echo "  Endpoint      ⚡  $ENDPOINT ($EP_STATUS)" ;;
+  InService) echo "  Endpoint      ✓  $ENDPOINT (InService)" ;;
+  NotDeployed) echo "  Endpoint      —  not deployed" ;;
+  *) echo "  Endpoint      ⚡  $ENDPOINT ($EP_STATUS)" ;;
   esac
 
 else
   # Local mode
-  if curl -sf "${MLFLOW_URL}/health" > /dev/null 2>&1; then
+  if curl -sf "${MLFLOW_URL}/health" >/dev/null 2>&1; then
     echo "  MLflow        ✓  ${MLFLOW_URL}"
   else
     echo "  MLflow        ✗  not running  (run: mlflow-start)"
   fi
 
-  if curl -sf "${INFERENCE_URL}/ping" > /dev/null 2>&1; then
+  if curl -sf "${INFERENCE_URL}/ping" >/dev/null 2>&1; then
     echo "  Inference     ✓  ${INFERENCE_URL}"
   else
     echo "  Inference     —  not running"

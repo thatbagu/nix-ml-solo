@@ -39,9 +39,9 @@ echo "$ECR_PASSWORD" | crane auth login --username AWS --password-stdin "$ECR_RE
 BASE_TAG="$ECR_URI:base-$PROFILE_HASH"
 echo "Building Nix closure layers (nixpkgs@${SHORT_REV}, profile: $PROFILE_HASH)..."
 BASE_TAR=$(nix-build "$PROJECT_ROOT/infra/container/base.nix" \
-  --argstr nixpkgs_rev      "$NIXPKGS_REV" \
+  --argstr nixpkgs_rev "$NIXPKGS_REV" \
   --argstr nixpkgs_nar_hash "$NIXPKGS_HASH" \
-  --argstr devenv_profile   "$DEVENV_PROFILE" \
+  --argstr devenv_profile "$DEVENV_PROFILE" \
   --no-out-link)
 
 # ── Push Nix layers via skopeo (handles nixpkgs tarball format, pushes Docker v2s2) ──
@@ -62,8 +62,8 @@ UV_PROJECT_ENVIRONMENT="$VENV_BUILD_DIR/venv" \
 
 # Fix shebangs: scripts point to the build-time temp path, rewrite to /venv
 find "$VENV_BUILD_DIR/venv/bin" -maxdepth 1 -type f \
-  -exec grep -lF "$VENV_BUILD_DIR" {} \; \
-  | xargs sed -i "s|$VENV_BUILD_DIR/venv/bin/python|/venv/bin/python|g"
+  -exec grep -qF "$VENV_BUILD_DIR" {} \; \
+  -exec sed -i "s|$VENV_BUILD_DIR/venv/bin/python|/venv/bin/python|g" {} \;
 
 # Pack as a layer — becomes /venv in the container
 tar -cf "$VENV_LAYER" -C "$VENV_BUILD_DIR" venv
@@ -71,8 +71,8 @@ tar -cf "$VENV_LAYER" -C "$VENV_BUILD_DIR" venv
 echo "Appending venv layer → $ECR_URI:with-venv"
 crane append \
   --base "$BASE_TAG" \
-  -f     "$VENV_LAYER" \
-  -t     "$ECR_URI:with-venv"
+  -f "$VENV_LAYER" \
+  -t "$ECR_URI:with-venv"
 
 # ── Append entrypoint layer via crane ────────────────────────────────────────
 ENTRYPOINT_LAYER=$(mktemp /tmp/entrypoint-layer.XXXXXX.tar)
@@ -85,8 +85,8 @@ tar --mode=755 -cf "$ENTRYPOINT_LAYER" \
 echo "Appending entrypoint layer → $ECR_URI:latest"
 crane append \
   --base "$ECR_URI:with-venv" \
-  -f     "$ENTRYPOINT_LAYER" \
-  -t     "$ECR_URI:latest"
+  -f "$ENTRYPOINT_LAYER" \
+  -t "$ECR_URI:latest"
 
 # Set entrypoint and ensure Docker manifest format (crane append produces OCI by default)
 crane mutate "$ECR_URI:latest" \

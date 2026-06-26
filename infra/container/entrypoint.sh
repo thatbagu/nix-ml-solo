@@ -31,17 +31,17 @@ fi
 # ── SageMaker Training ────────────────────────────────────────────────────────
 if [ -n "${TRAINING_SCRIPT:-}" ]; then
   case "$TRAINING_SCRIPT" in
-    *.ipynb)
-      OUT_NB="/opt/ml/output/data/executed.ipynb"
-      echo "[entrypoint] papermill $TRAINING_SCRIPT $OUT_NB" >&2
-      # shellcheck disable=SC2086
-      exec papermill "$TRAINING_SCRIPT" "$OUT_NB" ${TRAINING_SCRIPT_ARGS:-}
-      ;;
-    *)
-      echo "[entrypoint] python $TRAINING_SCRIPT" >&2
-      # shellcheck disable=SC2086
-      exec python "$TRAINING_SCRIPT" ${TRAINING_SCRIPT_ARGS:-}
-      ;;
+  *.ipynb)
+    OUT_NB="/opt/ml/output/data/executed.ipynb"
+    echo "[entrypoint] papermill $TRAINING_SCRIPT $OUT_NB" >&2
+    # shellcheck disable=SC2086
+    exec papermill "$TRAINING_SCRIPT" "$OUT_NB" ${TRAINING_SCRIPT_ARGS:-}
+    ;;
+  *)
+    echo "[entrypoint] python $TRAINING_SCRIPT" >&2
+    # shellcheck disable=SC2086
+    exec python "$TRAINING_SCRIPT" ${TRAINING_SCRIPT_ARGS:-}
+    ;;
   esac
 fi
 
