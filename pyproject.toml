@@ -10,7 +10,7 @@ dependencies = [
     "numpy>=1.26",
     "scikit-learn>=1.4",
     "jupyterlab>=4.0",
-    "papermill>=2.6",
+    "papermill>=2.7.0",
 ]
 
 [dependency-groups]
