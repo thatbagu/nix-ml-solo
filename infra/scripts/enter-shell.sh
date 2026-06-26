@@ -542,7 +542,51 @@ POLICY
       tf-plan
       if gum confirm "Apply the plan?"; then
         tf-apply
-        gum log --level info "Infrastructure deployed. Run 'mlflow-open' to open the MLflow UI."
+
+        # Offer restore if a previous teardown backup exists
+        if [ -d "$PROJECT_ROOT/backups" ] && [ -n "$(ls -A "$PROJECT_ROOT/backups" 2>/dev/null)" ]; then
+          echo ""
+          gum log --level info "Previous backup found in backups/."
+          if gum confirm "Restore MLflow experiments and DVC data from a previous teardown?"; then
+            restore
+          fi
+        fi
+
+        # Push Nix closure + container image while EC2 is booting (independent of EC2).
+        echo ""
+        gum log --level info "Pushing Nix packages to S3 cache (EC2 will pull these on first boot)…"
+        nix-sync
+
+        echo ""
+        gum log --level info "Building and pushing minimal container image to ECR…"
+        container-build
+
+        # Now wait for EC2 (NixOS first boot takes 5-15 min) and open services.
+        echo ""
+        gum log --level info "Waiting for EC2 to be ready, then opening MLflow and Jupyter…"
+        gum log --level info "(NixOS first boot can take 5-15 min — this will retry automatically)"
+
+        mlflow-open   # has built-in retry loop until EC2 is reachable
+
+        echo ""
+        gum log --level info "Starting file sync (mutagen bidirectional)…"
+        sync-ec2
+
+        echo ""
+        gum log --level info "Starting JupyterLab on EC2…"
+        jupyter-ec2
+
+        echo ""
+        gum style \
+          --border rounded --border-foreground 212 \
+          --padding "0 2" --margin "1 0" \
+          "$(gum style --bold 'Setup complete')" \
+          "  MLflow    → http://localhost:5000" \
+          "  Jupyter   → http://localhost:8888" \
+          "  File sync → mutagen (bidirectional, real-time)" \
+          "" \
+          "  train <script>   — run training" \
+          "  deploy <run-id>  — deploy to SageMaker"
       else
         gum log --level warn "Skipped tf-apply. Run it when ready."
       fi
@@ -557,6 +601,10 @@ POLICY
 if _needs_setup && [[ "$-" == *i* ]]; then
   _run_wizard
 fi
+
+# ── EC2 file sync (mutagen — bidirectional) ───────────────────────────────────
+
+[[ "$-" == *i* ]] && [ "${INFRA_MODE:-local}" = "cloud" ] && command -v mutagen &>/dev/null && sync 2>/dev/null || true
 
 # ── DVC init (once) ───────────────────────────────────────────────────────────
 

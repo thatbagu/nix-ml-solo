@@ -39,3 +39,7 @@ output "sagemaker_endpoint_name" {
 output "training_job_config_s3_uri" {
   value = local.cloud ? module.sagemaker_training[0].job_config_s3_uri : ""
 }
+
+output "public_endpoint_url" {
+  value = local.cloud && var.sagemaker_public_endpoint ? module.api_gateway[0].invoke_url : ""
+}

@@ -1,4 +1,5 @@
-# touch
+# touch privet test2
+
 { pkgs, lib, ... }:
 {
   # infra/devenv.nix adds local-only tooling (terraform, docker, gum wizard, etc.).
@@ -19,7 +20,6 @@
 
   languages.python = {
     enable = true;
-    venv.enable = true;
     uv = {
       enable = true;
       sync.enable = true;
@@ -40,22 +40,14 @@
 
     # Inference script for cloud deploy — edit src/inference.py to match your model
     INFERENCE_SCRIPT = "src/inference.py";
+
+    TF_VAR_sagemaker_public_endpoint = "true";
   };
 
   # ── Banner ───────────────────────────────────────────────────────────────────
 
   enterShell = ''
-    # Auto-sync devenv closure to S3 when the profile changes (cloud mode only).
-    # .devenv/profile is a symlink whose target changes on every rebuild.
-    _STAMP="$DEVENV_ROOT/.devenv-configs/.last-synced-profile"
-    _CUR=$(readlink -f "$DEVENV_ROOT/.devenv/profile" 2>/dev/null || true)
-    _PREV=$(cat "$_STAMP" 2>/dev/null || true)
-    if [ -n "$_CUR" ] && [ "$_CUR" != "$_PREV" ] && [ "''${INFRA_MODE:-local}" = "cloud" ]; then
-      echo "devenv profile changed — syncing closure to S3…"
-      nix-sync && echo "$_CUR" > "$_STAMP"
-    fi
-    unset _STAMP _CUR _PREV
-
+    source "$DEVENV_ROOT/.venv/bin/activate" 2>/dev/null || true
     MODE="''${INFRA_MODE:-local}"
     echo ""
     echo "  nix-ml-solo  [mode: $MODE]"
@@ -73,13 +65,19 @@
     echo "    deploy-status           check local inference server"
     else
     echo "  Cloud (AWS)"
+    echo "    jupyter-ec2             SSH tunnel → JupyterLab on EC2"
     echo "    mlflow-open             SSH tunnel → MLflow on EC2"
+    echo "    sync                    sync everything (files, Nix cache, NixOS if needed)"
+    echo "    sync-ec2-status         check file sync session"
+    echo "    sync-ec2-stop           terminate file sync session"
     echo "    train <script.py|.ipynb>  submit SageMaker training job"
     echo "    train-on-ec2 <script>   submit from EC2 via SSH"
     echo "    train-status [job]      check job status"
     echo "    train-logs <job>        stream CloudWatch logs"
     echo "    deploy <run-id>         package + deploy SageMaker endpoint"
     echo "    deploy-status           check endpoint status"
+    echo "    teardown                destroy all cloud infra (backs up MLflow + offers DVC pull)"
+    echo "    restore                 restore MLflow + DVC from a previous teardown backup"
     echo "    container-build         build + push to ECR"
     fi
     echo ""

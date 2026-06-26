@@ -64,12 +64,37 @@ module "sagemaker" {
   project                   = var.project
   environment               = var.environment
   aws_region                = var.aws_region
-  model_image_uri           = var.sagemaker_model_image_uri
-  model_s3_uri              = var.sagemaker_model_s3_uri
-  instance_type             = var.sagemaker_instance_type
+  model_image_uri                        = var.sagemaker_model_image_uri
+  model_s3_uri                           = var.sagemaker_model_s3_uri
+  instance_type                          = var.sagemaker_instance_type
+  instance_count                         = var.sagemaker_instance_count
+  min_capacity                           = var.sagemaker_min_capacity
+  max_capacity                           = var.sagemaker_max_capacity
+  scale_in_cooldown                      = var.sagemaker_scale_in_cooldown
+  scale_out_cooldown                     = var.sagemaker_scale_out_cooldown
+  target_invocations_per_instance        = var.sagemaker_target_invocations_per_instance
   execution_role_arn        = module.ec2[0].sagemaker_role_arn
   nix_cache_bucket          = module.nix_cache.bucket_name
   nix_cache_pull_policy_arn = module.nix_cache.pull_policy_arn
+  mlflow_tracking_uri       = "http://${module.ec2[0].private_ip}:${var.mlflow_port}"
+  subnet_ids                = module.ec2[0].subnet_ids
+  sagemaker_sg_id           = module.ec2[0].sagemaker_sg_id
+  deployment_strategy              = var.sagemaker_deployment_strategy
+  deployment_canary_percent        = var.sagemaker_deployment_canary_percent
+  deployment_linear_step_percent   = var.sagemaker_deployment_linear_step_percent
+  deployment_wait_interval_seconds = var.sagemaker_deployment_wait_interval_seconds
+}
+
+module "api_gateway" {
+  count = local.cloud && var.sagemaker_public_endpoint ? 1 : 0
+
+  source        = "./modules/api-gateway-inference"
+  project       = var.project
+  environment   = var.environment
+  aws_region    = var.aws_region
+  endpoint_name = module.sagemaker[0].endpoint_name
+  endpoint_arn  = module.sagemaker[0].endpoint_arn
+  binary        = var.sagemaker_public_endpoint_binary
 }
 
 module "sagemaker_training" {

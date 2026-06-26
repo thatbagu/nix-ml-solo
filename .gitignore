@@ -1,6 +1,9 @@
 .devenv/
 .devenv-configs/
 .direnv/
+backups/
+.ipynb_checkpoints/
+*.ipynb_checkpoints
 
 # Terraform — never commit
 infra/terraform/.terraform/

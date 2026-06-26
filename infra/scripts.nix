@@ -53,10 +53,6 @@ _:
     # Push the devenv closure to the S3 nix cache so EC2 can pull it without rebuilding.
     nix-sync.exec = builtins.readFile ./scripts/nix-sync.sh;
 
-    # ── Container ───────────────────────────────────────────────────────────
-
-    container-build.exec = builtins.readFile ./scripts/container-build.sh;
-
     # ── MLflow ──────────────────────────────────────────────────────────────
 
     mlflow-start.exec = ''
@@ -95,6 +91,151 @@ _:
 
     mlflow-close.exec = ''
       pkill -f "ssh.*5000:localhost:5000" && echo "MLflow tunnel closed." || echo "No tunnel running."
+    '';
+
+    # ── Unified sync ────────────────────────────────────────────────────────
+
+    sync.exec = ''
+      if [ "''${INFRA_MODE:-local}" != "cloud" ]; then
+        echo "sync requires cloud mode." >&2; exit 1
+      fi
+
+      STAMPS="$DEVENV_ROOT/.devenv-configs"
+
+      # 1. Mutagen — bidirectional file sync
+      if ! mutagen sync list nix-ml-solo 2>/dev/null | grep -q "Watching"; then
+        echo "[ sync ] starting file sync session…"
+        sync-ec2
+      else
+        echo "[ sync ] file sync running"
+      fi
+
+      # 2. Nix cache — push devenv closure to S3 if profile changed
+      _CUR=$(readlink -f "$DEVENV_ROOT/.devenv/profile" 2>/dev/null || true)
+      _PREV=$(cat "$STAMPS/.last-synced-profile" 2>/dev/null || true)
+      if [ -n "$_CUR" ] && [ "$_CUR" != "$_PREV" ]; then
+        echo "[ sync ] devenv profile changed — pushing Nix closure to S3…"
+        nix-sync && echo "$_CUR" > "$STAMPS/.last-synced-profile"
+      else
+        echo "[ sync ] Nix cache up to date"
+      fi
+
+      # 3. NixOS rebuild — push devenv.nix + devenv.lock to EC2 if changed
+      _HASH=$(md5sum "$DEVENV_ROOT/devenv.nix" "$DEVENV_ROOT/devenv.lock" 2>/dev/null | md5sum | cut -d" " -f1)
+      _PREV_HASH=$(cat "$STAMPS/.last-nixos-rebuilt" 2>/dev/null || true)
+      if [ "$_HASH" != "$_PREV_HASH" ]; then
+        echo "[ sync ] devenv.nix or devenv.lock changed — rebuilding EC2…"
+        nixos-rebuild && echo "$_HASH" > "$STAMPS/.last-nixos-rebuilt"
+      else
+        echo "[ sync ] EC2 NixOS config up to date"
+      fi
+    '';
+
+    # ── EC2 sync (mutagen — bidirectional, real-time) ────────────────────────
+
+    sync-ec2.exec = ''
+      if [ "''${INFRA_MODE:-local}" != "cloud" ]; then
+        echo "sync-ec2 requires cloud mode." >&2; exit 1
+      fi
+      EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
+
+      # Write SSH config entry so mutagen can reach EC2 with the right key.
+      # The IP is dynamic (changes on EC2 restart), so we regenerate each time.
+      mkdir -p "$HOME/.ssh/config.d"
+      cat > "$HOME/.ssh/config.d/nix-ml-solo" << EOF
+Host nix-ml-solo-ec2
+  HostName $EC2_IP
+  User ml
+  IdentityFile ''${SSH_IDENTITY_FILE:-$HOME/.ssh/nix-ml-solo}
+  IdentitiesOnly yes
+  StrictHostKeyChecking accept-new
+EOF
+      # Ensure ~/.ssh/config includes config.d (idempotent)
+      if ! grep -q "Include config.d/\*" "$HOME/.ssh/config" 2>/dev/null; then
+        printf "Include config.d/*\n\n" | cat - "$HOME/.ssh/config" 2>/dev/null > /tmp/_sshcfg && mv /tmp/_sshcfg "$HOME/.ssh/config" || \
+          echo "Include config.d/*" > "$HOME/.ssh/config"
+      fi
+
+      # Terminate any existing session and recreate (handles IP changes after restart)
+      mutagen sync terminate nix-ml-solo 2>/dev/null || true
+      mutagen sync create \
+        --name nix-ml-solo \
+        --mode two-way-resolved \
+        --ignore-vcs \
+        --ignore '.devenv' --ignore '.direnv' --ignore '.devenv-configs' \
+        --ignore '.venv' --ignore 'mlruns' --ignore '__pycache__' \
+        --ignore '*.pyc' --ignore '*.db' \
+        "$PROJECT_ROOT" \
+        "nix-ml-solo-ec2:/home/ml/project"
+      echo "Sync session started — bidirectional, real-time."
+      echo "Run 'sync-ec2-status' to check, 'sync-ec2-stop' to terminate."
+    '';
+
+    sync-ec2-status.exec = ''
+      mutagen sync list nix-ml-solo 2>/dev/null || echo "No active sync session."
+    '';
+
+    sync-ec2-stop.exec = ''
+      mutagen sync terminate nix-ml-solo 2>/dev/null && echo "Sync session terminated." || echo "No session to stop."
+    '';
+
+    # ── Jupyter on EC2 ──────────────────────────────────────────────────────
+
+    jupyter-ec2.exec = ''
+      if [ "''${INFRA_MODE:-local}" != "cloud" ]; then
+        echo "jupyter-ec2 requires cloud mode." >&2; exit 1
+      fi
+      EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
+      SSH="ssh -i $SSH_IDENTITY_FILE -o IdentitiesOnly=yes -o IdentityAgent=none -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes"
+
+      # Start JupyterLab on EC2 if it's not already running.
+      # Run inside devenv shell so all env vars from devenv.nix are inherited
+      # (MLFLOW_TRACKING_URI, venv PATH, etc.) without hardcoding anything here.
+      until $SSH "ml@$EC2_IP" "
+        if ! pgrep -x jupyter-lab > /dev/null 2>&1; then
+          mkdir -p /home/ml/project
+          cd /home/ml/project
+          nohup /run/current-system/sw/bin/devenv shell -- \
+            jupyter lab \
+            --no-browser \
+            --port 8888 \
+            --ip 127.0.0.1 \
+            --ServerApp.token=\"\" \
+            --ServerApp.password=\"\" \
+            > /home/ml/jupyter.log 2>&1 &
+          disown
+          sleep 3
+          echo 'JupyterLab started'
+        else
+          echo 'JupyterLab already running'
+        fi
+      " 2>/dev/null; do
+        printf "  EC2 not ready yet — retrying in 20s…\r"
+        sleep 20
+      done
+
+      # Kill any stale tunnel
+      pkill -f "ssh.*8888:localhost:8888" 2>/dev/null || true
+
+      echo "Opening SSH tunnel → http://localhost:8888"
+      ssh \
+        -f \
+        -o StrictHostKeyChecking=accept-new \
+        -o ConnectTimeout=10 \
+        -o BatchMode=yes \
+        -i "$SSH_IDENTITY_FILE" \
+        -N -L 8888:localhost:8888 \
+        "ml@$EC2_IP"
+      echo "Tunnel active → http://localhost:8888  (jupyter-ec2-close to stop)"
+    '';
+
+    jupyter-ec2-close.exec = ''
+      pkill -f "ssh.*8888:localhost:8888" && echo "Jupyter tunnel closed." || echo "No tunnel running."
+      EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip 2>/dev/null) || true
+      if [ -n "''${EC2_IP:-}" ]; then
+        ssh -i "$SSH_IDENTITY_FILE" -o IdentitiesOnly=yes -o IdentityAgent=none \
+          "ml@$EC2_IP" "pkill -x jupyter-lab || true" 2>/dev/null || true
+      fi
     '';
 
     # ── NixOS remote rebuild ─────────────────────────────────────────────────
@@ -164,18 +305,10 @@ _:
       fi
 
       EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
-      SSH="ssh -i $SSH_IDENTITY_FILE -o StrictHostKeyChecking=accept-new"
+      SSH="ssh -i $SSH_IDENTITY_FILE -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+      DEVENV_RUN="devenv shell --"
 
-      echo "Syncing project → ml@$EC2_IP:~/project/ …"
-      rsync -az --delete \
-        --exclude='.devenv/' --exclude='.direnv/' --exclude='.devenv-configs/' \
-        --exclude='.git/' --exclude='.venv/' --exclude='mlruns/' \
-        --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.db' \
-        -e "$SSH" \
-        "$PROJECT_ROOT/" "ml@$EC2_IP:~/project/"
-
-      echo "Installing Python deps from uv.lock …"
-      $SSH "ml@$EC2_IP" "cd ~/project && uv sync --frozen --no-dev --quiet"
+      echo "Files synced via mutagen — skipping rsync."
 
       EC2_MLFLOW="http://localhost:5000"
       EC2_DVC=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw dvc_bucket_url 2>/dev/null || echo "''${DVC_REMOTE_URL:-}")
@@ -191,14 +324,14 @@ _:
             cd ~/project
             MLFLOW_TRACKING_URI=$EC2_MLFLOW \
             DVC_REMOTE_URL=$EC2_DVC \
-            uv run papermill '$SCRIPT' '$OUT' $*"
+            $DEVENV_RUN uv run papermill '$SCRIPT' '$OUT' $*"
           ;;
         *)
           $SSH "ml@$EC2_IP" "
             cd ~/project
             MLFLOW_TRACKING_URI=$EC2_MLFLOW \
             DVC_REMOTE_URL=$EC2_DVC \
-            uv run python '$SCRIPT' $*"
+            $DEVENV_RUN uv run python '$SCRIPT' $*"
           ;;
       esac
     '';
@@ -206,6 +339,8 @@ _:
     # ── Deploy / Inference ──────────────────────────────────────────────────
 
     deploy.exec = builtins.readFile ./scripts/deploy.sh;
+    teardown.exec = builtins.readFile ./scripts/teardown.sh;
+    restore.exec = builtins.readFile ./scripts/restore.sh;
 
     deploy-status.exec = ''
       case "''${INFRA_MODE:-local}" in

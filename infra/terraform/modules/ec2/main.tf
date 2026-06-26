@@ -27,9 +27,25 @@ resource "aws_key_pair" "ml" {
   tags = local.tags
 }
 
+# ── VPC — use the default VPC ────────────────────────────────────────────────
+
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+# ── Security groups ───────────────────────────────────────────────────────────
+
 resource "aws_security_group" "ec2" {
   name        = "${var.project}-${var.environment}-ec2-sg"
   description = "Dev VM + MLflow server"
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
     description = "SSH"
@@ -39,7 +55,14 @@ resource "aws_security_group" "ec2" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # MLflow is NOT exposed publicly — access via SSH tunnel only
+  ingress {
+    description     = "MLflow - SageMaker inference logging (private only)"
+    from_port       = var.mlflow_port
+    to_port         = var.mlflow_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.sagemaker.id]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -48,6 +71,55 @@ resource "aws_security_group" "ec2" {
   }
 
   tags = local.tags
+}
+
+# Security group for SageMaker endpoint ENIs
+resource "aws_security_group" "sagemaker" {
+  name        = "${var.project}-${var.environment}-sagemaker-sg"
+  description = "SageMaker endpoint - outbound to MLflow on EC2"
+  vpc_id      = data.aws_vpc.default.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = local.tags
+}
+
+# ── VPC endpoints (so SageMaker in VPC can pull ECR images + S3 model artifacts)
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = data.aws_vpc.default.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = data.aws_vpc.default.main_route_table_id != null ? [data.aws_vpc.default.main_route_table_id] : []
+
+  tags = merge(local.tags, { Name = "${var.project}-${var.environment}-s3-endpoint" })
+}
+
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = data.aws_vpc.default.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = data.aws_subnets.default.ids
+  security_group_ids  = [aws_security_group.sagemaker.id]
+  private_dns_enabled = true
+
+  tags = merge(local.tags, { Name = "${var.project}-${var.environment}-ecr-api-endpoint" })
+}
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = data.aws_vpc.default.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = data.aws_subnets.default.ids
+  security_group_ids  = [aws_security_group.sagemaker.id]
+  private_dns_enabled = true
+
+  tags = merge(local.tags, { Name = "${var.project}-${var.environment}-ecr-dkr-endpoint" })
 }
 
 locals {

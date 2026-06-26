@@ -94,6 +94,8 @@ in
       WorkingDirectory = "/home/ml/project";
       Environment     = [ "HOME=/home/ml" "AWS_DEFAULT_REGION=${aws_region}" ];
       ExecStart       = "/run/current-system/sw/bin/devenv shell -- echo devenv-profile-ready";
+      # uv sync shellHook doesn't fire in non-interactive service context — run it explicitly.
+      ExecStartPost   = "/home/ml/project/.devenv/profile/bin/uv sync --frozen --project /home/ml/project";
     };
   };
 
@@ -104,7 +106,7 @@ in
     text = ''
       #!/bin/sh
       exec /home/ml/.local/bin/mlflow server \
-        --host 127.0.0.1 \
+        --host 0.0.0.0 \
         --port ${mlflow_port} \
         --workers 1 \
         --default-artifact-root s3://${dvc_bucket_name}/mlflow \

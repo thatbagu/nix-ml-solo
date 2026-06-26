@@ -83,6 +83,78 @@ variable "sagemaker_instance_type" {
   default     = "ml.t2.medium"
 }
 
+variable "sagemaker_instance_count" {
+  description = "Initial number of inference instances"
+  type        = number
+  default     = 1
+}
+
+variable "sagemaker_min_capacity" {
+  description = "Auto-scaling minimum instance count (0 = no auto-scaling)"
+  type        = number
+  default     = 0
+}
+
+variable "sagemaker_max_capacity" {
+  description = "Auto-scaling maximum instance count"
+  type        = number
+  default     = 4
+}
+
+variable "sagemaker_scale_in_cooldown" {
+  description = "Seconds to wait after scale-in before another scale-in"
+  type        = number
+  default     = 300
+}
+
+variable "sagemaker_scale_out_cooldown" {
+  description = "Seconds to wait after scale-out before another scale-out"
+  type        = number
+  default     = 60
+}
+
+variable "sagemaker_target_invocations_per_instance" {
+  description = "Target invocations-per-instance for auto-scaling (requests/min)"
+  type        = number
+  default     = 100
+}
+
+variable "sagemaker_public_endpoint" {
+  description = "Expose endpoint publicly via API Gateway (no AWS auth required)"
+  type        = bool
+  default     = false
+}
+
+variable "sagemaker_public_endpoint_binary" {
+  description = "Accept binary payloads (images, audio) via the public API Gateway endpoint"
+  type        = bool
+  default     = false
+}
+
+variable "sagemaker_deployment_strategy" {
+  description = "Endpoint update strategy: blue_green | canary | linear"
+  type        = string
+  default     = "blue_green"
+}
+
+variable "sagemaker_deployment_canary_percent" {
+  description = "% of traffic sent to new variant first (canary)"
+  type        = number
+  default     = 10
+}
+
+variable "sagemaker_deployment_linear_step_percent" {
+  description = "% of traffic shifted per step (linear)"
+  type        = number
+  default     = 25
+}
+
+variable "sagemaker_deployment_wait_interval_seconds" {
+  description = "Seconds to wait between canary/linear traffic shifts"
+  type        = number
+  default     = 300
+}
+
 variable "nixpkgs_rev" {
   description = "nixpkgs git revision — auto-extracted from devenv.lock by enter-shell.sh"
   type        = string

@@ -50,7 +50,7 @@ case "$MODE" in
   # ── Cloud ──────────────────────────────────────────────────────────────────
   cloud)
     SUFFIX="$(date +%Y%m%d-%H%M%S)"
-    INSTANCE="${SAGEMAKER_INSTANCE:-ml.m5.xlarge}"
+    INSTANCE="${SAGEMAKER_TRAINING_INSTANCE:-${SAGEMAKER_INSTANCE:-ml.m5.xlarge}}"
     REGION="$AWS_DEFAULT_REGION"
     TF_DIR="$PROJECT_ROOT/infra/terraform"
 
