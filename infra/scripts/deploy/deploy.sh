@@ -66,14 +66,21 @@ case "$MODE" in
       echo "Error: INFERENCE_SCRIPT is not set." >&2
       echo "  Set it in devenv.nix:  env.INFERENCE_SCRIPT = \"src/inference.py\";" >&2
       echo "  or export it:          export INFERENCE_SCRIPT=src/inference.py" >&2
-      echo ""
-      echo "  A starter is at: src/inference.py — edit and set INFERENCE_SCRIPT" >&2
       exit 1
     fi
 
     if [ ! -f "$INFERENCE_SCRIPT" ]; then
       echo "Error: inference script not found: $INFERENCE_SCRIPT" >&2
       exit 1
+    fi
+
+    source "$PROJECT_ROOT/infra/scripts/_lib.sh"
+    _require_ssh
+
+    # Auto-ensure MLflow is reachable for artifact download
+    if ! curl -sf http://localhost:5000/health > /dev/null 2>&1; then
+      echo "[ deploy ] MLflow not reachable — connecting..."
+      mlflow-open
     fi
 
     REGION="$AWS_DEFAULT_REGION"

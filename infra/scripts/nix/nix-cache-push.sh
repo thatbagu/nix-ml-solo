@@ -9,9 +9,10 @@ if [ -z "$BUCKET" ]; then
   exit 1
 fi
 
-PROFILE_PATH=$(nix build .#mlEnv --print-out-paths --no-link 2>/dev/null || echo "")
-if [ -z "$PROFILE_PATH" ]; then
-  PROFILE_PATH=$(nix build --print-out-paths --no-link 2>/dev/null)
+PROFILE_PATH=$(readlink -f "$DEVENV_ROOT/.devenv/profile" 2>/dev/null || true)
+if [ -z "$PROFILE_PATH" ] || [ ! -e "$PROFILE_PATH" ]; then
+  echo "Error: devenv profile not found. Run 'direnv reload' first." >&2
+  exit 1
 fi
 
 echo "Pushing closure of $PROFILE_PATH to s3://$BUCKET ..."

@@ -3,16 +3,14 @@
 # Backs up MLflow data from EC2 and offers DVC pull, then destroys everything.
 set -euo pipefail
 
-if [ "${INFRA_MODE:-local}" != "cloud" ]; then
-  echo "teardown requires cloud mode (INFRA_MODE=cloud)." >&2; exit 1
-fi
+source "$PROJECT_ROOT/infra/scripts/_lib.sh"
+_require_cloud
 
 TF_DIR="$PROJECT_ROOT/infra/terraform"
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 BACKUP_DIR="$PROJECT_ROOT/backups/$(date +%Y-%m-%d-%H%M%S)"
 
 DVC_BUCKET=$(cd "$TF_DIR" && tofu output -raw dvc_bucket_name 2>/dev/null)
-NIX_BUCKET=$(cd "$TF_DIR" && tofu output -raw nix_cache_bucket 2>/dev/null)
 EC2_IP=$(cd "$TF_DIR" && tofu output -raw ec2_public_ip 2>/dev/null || true)
 
 _s3_size() {
@@ -28,31 +26,26 @@ echo "  ────────────────────────
 echo ""
 echo "  Calculating S3 storage sizes..."
 DVC_SIZE=$(_s3_size "$DVC_BUCKET")
-NIX_SIZE=$(_s3_size "$NIX_BUCKET")
 
 echo ""
-echo "  S3 buckets that will be deleted:"
-echo "    s3://$DVC_BUCKET   $DVC_SIZE"
-echo "    s3://$NIX_BUCKET   $NIX_SIZE  (regenerable)"
+echo "  DVC data (s3://$DVC_BUCKET): $DVC_SIZE"
+echo "  Nix cache: regenerable — skipping"
 echo ""
 
 # ── Backup MLflow from EC2 ────────────────────────────────────────────────────
 DVC_PULLED=false
 
-if [ -n "$EC2_IP" ] && [ -n "${SSH_IDENTITY_FILE:-}" ]; then
+if [ -n "$EC2_IP" ] && [ -n "${SSH_IDENTITY_FILE:-}" ] && [ -f "${SSH_IDENTITY_FILE}" ]; then
   echo "  Backing up MLflow data from EC2..."
   mkdir -p "$BACKUP_DIR/mlflow"
   SSH="ssh -i $SSH_IDENTITY_FILE -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10"
 
-  rsync -az -e "$SSH" \
-    "ml@$EC2_IP:/home/ml/project/mlflow.db" \
-    "$BACKUP_DIR/mlflow/" 2>/dev/null || true
+  $SSH "ml@$EC2_IP" \
+    "tar czf - -C /home/ml mlflow.db mlflow.db-shm mlflow.db-wal 2>/dev/null" \
+    | tar xzf - -C "$BACKUP_DIR/mlflow/" 2>/dev/null || true
 
-  rsync -az -e "$SSH" \
-    "ml@$EC2_IP:/home/ml/project/mlruns/" \
-    "$BACKUP_DIR/mlflow/mlruns/" 2>/dev/null || true
-
-  echo "  MLflow backed up → $BACKUP_DIR/mlflow/"
+  MLFLOW_SIZE=$(du -sh "$BACKUP_DIR/mlflow/" 2>/dev/null | cut -f1 || echo "0")
+  echo "  MLflow backed up → $BACKUP_DIR/mlflow/  ($MLFLOW_SIZE)"
 else
   echo "  Skipping MLflow backup (EC2 not reachable)."
 fi
@@ -62,23 +55,21 @@ echo ""
 if gum confirm "  Download DVC data locally before destroying? ($DVC_SIZE)" --default=false; then
   echo ""
   echo "  Pulling DVC data → $PROJECT_ROOT ..."
-  cd "$PROJECT_ROOT" && dvc pull
+  cd "$PROJECT_ROOT" && uv run dvc pull
   DVC_PULLED=true
   echo "  DVC data saved locally."
 fi
 
 # ── Save backup metadata ──────────────────────────────────────────────────────
 mkdir -p "$BACKUP_DIR"
-cat > "$BACKUP_DIR/meta.json" <<EOF
-{
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "dvc_bucket": "$DVC_BUCKET",
-  "nix_bucket": "$NIX_BUCKET",
-  "ec2_ip": "${EC2_IP:-}",
-  "dvc_pulled": $DVC_PULLED,
-  "git_commit": "$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
-}
-EOF
+jq -n \
+  --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg dvc_bucket "$DVC_BUCKET" \
+  --arg ec2_ip "${EC2_IP:-}" \
+  --argjson dvc_pulled "$DVC_PULLED" \
+  --arg git_commit "$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")" \
+  '{timestamp: $timestamp, dvc_bucket: $dvc_bucket, ec2_ip: $ec2_ip, dvc_pulled: $dvc_pulled, git_commit: $git_commit}' \
+  > "$BACKUP_DIR/meta.json"
 
 echo ""
 echo "  Backup saved → $BACKUP_DIR"

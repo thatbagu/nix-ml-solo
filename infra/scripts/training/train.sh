@@ -49,8 +49,20 @@ case "$MODE" in
 
   # ── Cloud ──────────────────────────────────────────────────────────────────
   cloud)
+    # Auto-ensure file sync is running
+    if ! mutagen sync list nix-ml-solo 2>/dev/null | grep -q "Watching"; then
+      echo "[ train ] file sync not running — starting..."
+      sync-ec2
+    fi
+
+    # Auto-ensure MLflow tunnel is open
+    if ! curl -sf http://localhost:5000/health > /dev/null 2>&1; then
+      echo "[ train ] MLflow tunnel not open — connecting..."
+      mlflow-open
+    fi
+
     SUFFIX="$(date +%Y%m%d-%H%M%S)"
-    INSTANCE="${SAGEMAKER_TRAINING_INSTANCE:-${SAGEMAKER_INSTANCE:-ml.m5.xlarge}}"
+    INSTANCE="${SAGEMAKER_TRAINING_INSTANCE:-ml.m5.xlarge}"
     REGION="$AWS_DEFAULT_REGION"
     TF_DIR="$PROJECT_ROOT/infra/terraform"
 
@@ -127,7 +139,7 @@ case "$MODE" in
     echo "  train-status $JOB_NAME"
     echo "  train-logs   $JOB_NAME"
     if _is_notebook "$SCRIPT"; then
-      echo "  Executed notebook: s3://$DVC_BUCKET/training-output/$JOB_NAME/executed.ipynb"
+      echo "  Executed notebook: s3://$DVC_BUCKET/training-output/$JOB_NAME/output/executed.ipynb"
     fi
     ;;
 

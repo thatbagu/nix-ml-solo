@@ -3,9 +3,9 @@
 # Run this after 'setup' if you have a backup from a previous teardown.
 set -euo pipefail
 
-if [ "${INFRA_MODE:-local}" != "cloud" ]; then
-  echo "restore requires cloud mode (INFRA_MODE=cloud)." >&2; exit 1
-fi
+source "$PROJECT_ROOT/infra/scripts/_lib.sh"
+_require_cloud
+_require_ssh
 
 BACKUPS_DIR="$PROJECT_ROOT/backups"
 TF_DIR="$PROJECT_ROOT/infra/terraform"
@@ -25,10 +25,11 @@ META="$BACKUP_DIR/meta.json"
 echo ""
 echo "  Backup: $SELECTED"
 
+DVC_PULLED=false
 if [ -f "$META" ]; then
-  TIMESTAMP=$(python3 -c "import json; print(json.load(open('$META'))['timestamp'])" 2>/dev/null || echo "unknown")
-  GIT_COMMIT=$(python3 -c "import json; print(json.load(open('$META'))['git_commit'])" 2>/dev/null || echo "unknown")
-  DVC_PULLED=$(python3 -c "import json; print(json.load(open('$META'))['dvc_pulled'])" 2>/dev/null || echo "false")
+  TIMESTAMP=$(jq -r '.timestamp // "unknown"' "$META" 2>/dev/null || echo "unknown")
+  GIT_COMMIT=$(jq -r '.git_commit // "unknown"' "$META" 2>/dev/null || echo "unknown")
+  DVC_PULLED=$(jq -r '.dvc_pulled // false' "$META" 2>/dev/null || echo "false")
   echo "  Date      : $TIMESTAMP"
   echo "  Git commit: $GIT_COMMIT"
   echo "  DVC pulled: $DVC_PULLED"
@@ -38,19 +39,12 @@ EC2_IP=$(cd "$TF_DIR" && tofu output -raw ec2_public_ip 2>/dev/null)
 SSH="ssh -i $SSH_IDENTITY_FILE -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=10"
 
 # ── Restore MLflow ────────────────────────────────────────────────────────────
-if [ -d "$BACKUP_DIR/mlflow" ]; then
+if [ -d "$BACKUP_DIR/mlflow" ] && [ -n "$(ls -A "$BACKUP_DIR/mlflow" 2>/dev/null)" ]; then
   echo ""
   if gum confirm "  Restore MLflow experiments to EC2?" --default=true; then
     echo "  Pushing MLflow data → ml@$EC2_IP..."
-
-    $SSH "ml@$EC2_IP" "mkdir -p /home/ml/project"
-
-    [ -f "$BACKUP_DIR/mlflow/mlflow.db" ] && \
-      rsync -az -e "$SSH" "$BACKUP_DIR/mlflow/mlflow.db" "ml@$EC2_IP:/home/ml/project/"
-
-    [ -d "$BACKUP_DIR/mlflow/mlruns" ] && \
-      rsync -az -e "$SSH" "$BACKUP_DIR/mlflow/mlruns/" "ml@$EC2_IP:/home/ml/project/mlruns/"
-
+    tar czf - -C "$BACKUP_DIR/mlflow" . \
+      | $SSH "ml@$EC2_IP" "tar xzf - -C /home/ml/"
     echo "  MLflow experiments restored."
   fi
 else
@@ -58,13 +52,13 @@ else
 fi
 
 # ── Restore DVC ───────────────────────────────────────────────────────────────
-if [ "$DVC_PULLED" = "True" ]; then
+if [ "$DVC_PULLED" = "true" ]; then
   echo ""
   if gum confirm "  Push local DVC data back to S3?" --default=true; then
     cd "$PROJECT_ROOT"
     echo "  Pushing DVC data → S3..."
-    dvc push
-    echo "  DVC data restored."
+    uv run dvc push
+    echo "  DVC data pushed."
   fi
 fi
 
