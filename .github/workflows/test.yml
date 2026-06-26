@@ -1,0 +1,45 @@
+name: Test
+
+on:
+  push:
+    branches: [main, stage, dev]
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+        with:
+          use-flakehub: false
+
+      - name: Run unit tests
+        run: |
+          nix shell nixpkgs#python312 nixpkgs#uv nixpkgs#stdenv.cc.cc.lib \
+            --command bash -c '
+              export LD_LIBRARY_PATH=$(nix eval --raw nixpkgs#stdenv.cc.cc.lib)/lib:$LD_LIBRARY_PATH
+              uv run pytest tests/unit/ -v
+            '
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+        with:
+          use-flakehub: false
+
+      - name: Run integration tests
+        run: |
+          nix shell nixpkgs#python312 nixpkgs#uv nixpkgs#stdenv.cc.cc.lib \
+            --command bash -c '
+              export LD_LIBRARY_PATH=$(nix eval --raw nixpkgs#stdenv.cc.cc.lib)/lib:$LD_LIBRARY_PATH
+              uv run pytest tests/integration/ -v
+            '

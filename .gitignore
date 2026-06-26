@@ -3,6 +3,9 @@
 .direnv/
 backups/
 .venv/
+tmp/
+__pycache__/
+*.pyc
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 

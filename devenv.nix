@@ -72,7 +72,7 @@ in
     shellcheck.enable = true;
     shfmt = {
       enable = true;
-      settings.indent-size = 2;
+      settings.indent = 2;
     };
     nixpkgs-fmt.enable = true;
   };
