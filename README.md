@@ -258,3 +258,7 @@ nix-ml-solo/
             ├── api-gateway-inference/ # public HTTPS wrapper (optional)
             └── state-bootstrap/    # S3 state bucket + DynamoDB (run once)
 ```
+
+## License
+
+[Apache 2.0](LICENSE)
