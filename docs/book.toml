@@ -1,5 +1,6 @@
 [book]
 title = "nix-ml-solo"
+authors = ["Egor Kosaretskii"]
 description = "Solo ML stack on AWS."
 src = "."
 
