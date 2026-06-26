@@ -6,6 +6,10 @@ src = "."
 [build]
 build-dir = "book"
 
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
 [output.html]
 default-theme = "light"
 fold.enable = true
+additional-js = ["mermaid.min.js", "mermaid-init.js"]

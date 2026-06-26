@@ -20,3 +20,5 @@ infra/terraform/modules/state-bootstrap/.terraform.lock.hcl
 infra/terraform/modules/state-bootstrap/terraform.tfstate
 infra/terraform/modules/state-bootstrap/terraform.tfstate.backup
 docs/book/
+docs/mermaid.min.js
+docs/mermaid-init.js

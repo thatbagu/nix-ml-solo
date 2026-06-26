@@ -28,6 +28,9 @@ jobs:
 
       - uses: DeterminateSystems/magic-nix-cache-action@v8
 
+      - name: Install mermaid support
+        run: nix run nixpkgs#mdbook-mermaid -- install docs
+
       - name: Build docs
         run: nix run nixpkgs#mdbook -- build docs
 

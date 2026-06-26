@@ -17,24 +17,25 @@ This eliminates the "works on my machine" problem for ML: if your training scrip
 
 ```mermaid
 C4Container
-    title nix-ml-solo — one Nix environment, three materializations
+    title nix-ml-solo: one Nix environment, three materializations
 
     Person(engineer, "ML Engineer", "Solo practitioner")
 
-    System_Boundary(env, "Unified environment — defined once in devenv.nix") {
-        Container(local, "Local shell", "devenv · Nix + Python + uv", "Development, experiments, all commands")
-        Container(ec2, "EC2 NixOS VM", "NixOS", "MLflow server · SSH endpoint · remote training")
-        Container(sagemaker, "SageMaker container", "OCI · same Nix closure + venv", "Training jobs · Inference endpoint")
+    System_Boundary(env, "Unified environment - defined once in devenv.nix") {
+        Container(local, "Local shell", "devenv, Nix, Python, uv", "Development, experiments, all commands")
+        Container(ec2, "EC2 NixOS VM", "NixOS", "MLflow server, SSH endpoint, remote training")
+        Container(sagemaker, "SageMaker container", "OCI, same Nix closure + venv", "Training jobs, inference endpoint")
     }
 
-    ContainerDb(nix_cache, "Nix binary cache", "S3", "Pre-built store paths — shared by all three runtimes")
+    ContainerDb(nix_cache, "Nix binary cache", "S3", "Pre-built store paths shared by all three runtimes")
     ContainerDb(mlflow_db, "MLflow", "SQLite on EC2 EBS", "Experiments, runs, model registry")
     ContainerDb(dvc_store, "DVC store", "S3", "Versioned training datasets and artifacts")
     Container(ecr, "ECR", "Container registry", "Image layers: Nix closure + Python venv + entrypoint")
 
     Rel(engineer, local, "devenv shell / commands", "fish / bash")
-    BiRel(local, ec2, "mutagen file sync", "SSH")
-    Rel(local, ec2, "MLflow SSH tunnel", ":5000")
+    Rel(local, ec2, "mutagen file sync", "SSH")
+    Rel(ec2, local, "mutagen file sync", "SSH")
+    Rel(local, ec2, "MLflow SSH tunnel", "port 5000")
     Rel(local, nix_cache, "nix-sync: push devenv closure", "s3://")
     Rel(ec2, nix_cache, "nixos-rebuild: pull packages", "s3://")
     Rel(local, ecr, "container-build: push layers", "skopeo + crane")
