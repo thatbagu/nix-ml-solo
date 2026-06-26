@@ -1,38 +1,32 @@
 # nix-ml-solo
 
-Solo ML stack on AWS. Reproducible environments via Nix, experiment tracking via MLflow, data versioning via DVC, training via SageMaker.
+Solo ML stack on AWS. Reproducible environments via Nix, experiment tracking via MLflow, data versioning via DVC, training on EC2 or SageMaker.
 
 ## From zero to first run
 
-If you're new to AWS, follow these four steps — the setup wizard handles everything after step 2.
-
 ### Step 1 — Create an AWS account
 
-Go to [aws.amazon.com](https://aws.amazon.com) → **Create an AWS Account**. A credit card is required but nothing is charged until you deploy infrastructure. If it is your first time creating aws account, you would be most likely offered free trial of 200 USD.
+Go to [aws.amazon.com](https://aws.amazon.com) → **Create an AWS Account**. Nothing is charged until you deploy infrastructure.
 
 ### Step 2 — Get temporary credentials for the setup wizard
 
-The wizard will create a dedicated IAM user for you automatically. To do that it needs temporary admin access once.
+The wizard creates a dedicated IAM user automatically. It needs temporary admin access once.
 
-**Root account (simplest for a brand-new account):**
+**Root account (brand-new account):**
 
 1. Sign in at [console.aws.amazon.com](https://console.aws.amazon.com)
-2. Click your account name (top-right) → **Security credentials**
-3. Scroll to **Access keys** → **Create access key** → choose **Command Line Interface**
-4. Copy the **Access Key ID** and **Secret Access Key** — you'll paste them into the wizard
+2. Click your name (top-right) → **Security credentials**
+3. **Access keys** → **Create access key** → CLI → copy both values
 
-**Existing IAM admin user:**
+**Existing IAM admin user:** IAM → Users → your name → **Security credentials** → **Create access key**
 
-1. IAM → Users → your username → **Security credentials** tab
-2. **Create access key** → Command Line Interface → copy both values
-
-> These credentials are used once by the wizard and never saved to disk.
+> These credentials are used once and never saved to disk.
 
 ### Step 3 — Install devenv
 
 Follow [devenv.sh/getting-started](https://devenv.sh/getting-started/) — a one-liner Nix installer.
 
-### Step 4 — Clone and run
+### Step 4 — Clone and enter the shell
 
 ```sh
 git clone <this-repo>
@@ -40,188 +34,212 @@ cd nix-ml-solo
 devenv shell
 ```
 
-The setup wizard fires on first run. Press Enter to accept defaults shown in `[brackets]`. It will:
+The setup wizard fires on first run. It asks for:
 
-- Ask for project name, AWS region, infra mode (local vs cloud)
-- Use your bootstrap credentials to create an IAM user `<project>-deploy` with its own keys
-- Write everything to `.devenv-configs/local.env` (gitignored, never committed)
+| Prompt            | Default     | Notes                                              |
+| ----------------- | ----------- | -------------------------------------------------- |
+| AWS region        | `us-east-1` | Fuzzy-search from all valid AWS regions            |
+| AWS profile       | `ml-solo`   |                                                    |
+| Infra mode        | `local`     | `local` = laptop only, no EC2 cost                 |
+| EC2 instance type | `t3.small`  | Cloud mode only                                    |
+| Auth method       | IAM keys    | IAM keys (solo) or IAM Identity Center (SSO/teams) |
 
-| Prompt            | Default       | Notes                                              |
-| ----------------- | ------------- | -------------------------------------------------- |
-| Project name      | `nix-ml-solo` | Used to name all AWS resources; must be lowercase  |
-| AWS region        | `us-east-1`   | Fuzzy-search from all valid AWS regions            |
-| AWS profile       | `ml-solo`     |                                                    |
-| Infra mode        | `local`       | `local` = laptop only, no EC2 cost                 |
-| EC2 instance type | `t3.micro`    | Cloud mode only; free-tier eligible, good for MLflow |
-| Auth method       | IAM keys      | IAM keys (solo) or IAM Identity Center (SSO/teams) |
+Project name and environment are set in `devenv.nix` — not asked here.  
+SSH keypair is auto-generated at `~/.ssh/<project>` in cloud mode.  
+Settings are re-used on every subsequent shell. Run `setup` to reconfigure.
 
-SSH keypair is auto-generated at `~/.ssh/<project-name>` in cloud mode — no paste needed.
+## Configuring your project
 
-Settings are re-used on every subsequent `devenv shell`. Run `setup` anytime to reconfigure.
+`devenv.nix` is the single source of truth. Change values here and they flow everywhere — Terraform resource names, S3 bucket names, script banners, ports.
 
-## First-time infra setup
+```nix
+let
+  project      = "nix-ml-solo";   # → all AWS resource names
+  environment  = "dev";
+  mlflowPort   = 5000;
+  jupyterPort  = 8888;
+  inferencePort = 5001;
+in
+{ ... }
+```
 
-The setup wizard offers to deploy infrastructure automatically at the end of first run. If you skipped it, run manually:
+To switch to cloud mode, uncomment one line:
+
+```nix
+# env.INFRA_MODE = "cloud";
+```
+
+## First-time infra setup (cloud mode)
+
+The setup wizard offers to deploy infrastructure at the end of first run. To run manually:
 
 ```sh
-tf-bootstrap       # create S3 state bucket + DynamoDB lock table
-tf-init            # initialise Terraform with the S3 backend
+tf-bootstrap       # create S3 state bucket + DynamoDB lock table (once)
+tf-init            # initialise OpenTofu with the S3 backend
 tf-plan            # review what will be created
-tf-apply           # provision everything
+tf-apply           # provision everything (~5 min)
 ```
 
 This creates:
 
-- **EC2** — NixOS VM running MLflow (SSH tunnel access only)
-- **S3** — DVC data bucket + Nix binary cache bucket + Terraform state bucket
+- **EC2** — NixOS VM running MLflow (SSH tunnel, no public port)
+- **S3** — DVC data bucket + Nix binary cache bucket
 - **ECR** — container registry for training/inference images
-- **SageMaker** — training job config (inference endpoint off by default)
+- **SageMaker** — inference endpoint (off by default, enable with `TF_VAR_sagemaker_public_endpoint`)
+- **VPC endpoints** — ECR + S3 gateway so SageMaker containers can pull images without internet
+
+> **SageMaker training quotas**: new AWS accounts have all SageMaker training instance quotas set to 0. Either request a quota increase in the Service Quotas console or use `train-on-ec2` to run training directly on the EC2 VM instead.
+
+## Core commands
+
+Eight commands cover the full ML lifecycle. Everything else is automatic.
+
+```sh
+setup                           # configure AWS credentials + deploy infra
+status                          # show EC2 / sync / MLflow / Jupyter / endpoint state
+
+train src/train.py              # run training (.py or .ipynb)
+train notebooks/exp.ipynb
+train src/train.py -- --lr 0.01
+deploy <mlflow-run-id>          # package model → endpoint
+
+jupyter                         # open JupyterLab (local or EC2 tunnel)
+logs <job-name>                 # stream SageMaker training logs
+
+teardown                        # destroy all cloud infra (backs up MLflow first)
+restore                         # recover MLflow + DVC after re-deploying
+```
+
+In **cloud mode**, `train` and `deploy` automatically:
+
+- Start the file sync session if it is not running
+- Open the MLflow SSH tunnel if it is not open
+- Build and push the container image if it has changed
+
+The `sync` command is available as a manual escape hatch if you need to force a sync outside of train/deploy.
 
 ## Two modes
 
-Set `INFRA_MODE` in `devenv.nix` (or choose during setup wizard):
+|           | `local` (default)             | `cloud`                           |
+| --------- | ----------------------------- | --------------------------------- |
+| MLflow    | runs on your machine          | runs on EC2, SSH tunnel           |
+| Training  | `python script.py` directly   | SageMaker job (or `train-on-ec2`) |
+| Inference | `mlflow models serve` locally | SageMaker endpoint                |
+| AWS cost  | S3 only (~$0)                 | EC2 + SageMaker + ECR             |
 
-|                  | `local` (default)                  | `cloud`                 |
-| ---------------- | ---------------------------------- | ----------------------- |
-| MLflow           | runs on your machine               | runs on EC2, SSH tunnel |
-| Training         | `python script.py` directly        | SageMaker job           |
-| Inference        | `mlflow models serve` on localhost | SageMaker endpoint      |
-| AWS infra needed | S3 only                            | EC2 + SageMaker + ECR   |
+## Training on EC2 vs SageMaker
 
-```nix
-# devenv.nix — switch to cloud
-env.INFRA_MODE = "cloud";
-```
+Two cloud training paths:
 
-## Day-to-day
+**`train <script>`** — submits a SageMaker training job. Requires a quota increase for training instance types (all zero by default in new accounts). Runs in a Docker container built from your devenv.
 
-```sh
-# Data (both modes)
-dvc pull                    # pull latest data from S3
-dvc push                    # push new data to S3
-jupyter lab                 # start notebook
+**`train-on-ec2 <script>`** — SSH into the EC2 VM and runs the script there directly in the devenv shell. No quota required, uses the same instance as MLflow. Good for testing before requesting SageMaker quotas.
 
-# Local mode
-mlflow-start                # start MLflow on localhost:5000
-train src/train.py          # run training script locally
-train notebooks/starter.ipynb     # run notebook via papermill
-train src/train.py -- --lr 0.01   # with extra args
-train notebooks/starter.ipynb -- -p lr 0.01  # papermill parameters
-deploy <run-id>             # serve model on localhost:5001
-deploy-status               # check local server
+## Inference endpoint
 
-# Cloud mode
-mlflow-open                 # SSH tunnel → MLflow on EC2
-train src/train.py          # submit SageMaker job (.py or .ipynb)
-train-status [job]          # check job status
-train-logs <job>            # stream CloudWatch logs
-train-on-ec2 src/train.py   # submit from EC2 via SSH
-deploy <run-id>             # package model → SageMaker endpoint
-deploy-status               # check endpoint status
-container-build             # build + push to ECR
-```
-
-## Inference script
-
-For cloud deploys, SageMaker needs an inference script alongside the model weights. Copy the template and point devenv at it:
+Edit `src/inference.py` (implements `model_fn` / `predict_fn` / `input_fn` / `output_fn` for MLflow pyfunc) and run:
 
 ```sh
-Edit `src/inference.py` — it's already there as a starter.
+deploy <mlflow-run-id>
 ```
+
+`deploy` will:
+
+1. Open the MLflow tunnel if needed
+2. Auto-build the container if devenv or entrypoint changed
+3. Download model artifacts from MLflow
+4. Package them as `model.tar.gz` with the inference script
+5. Upload to S3 and create/update the SageMaker endpoint via Terraform
+
+To expose the endpoint publicly (no AWS auth):
 
 ```nix
 # devenv.nix
-env.INFERENCE_SCRIPT = "src/inference.py";
+env.TF_VAR_sagemaker_public_endpoint = "true";
 ```
 
-The template implements `model_fn` / `input_fn` / `predict_fn` / `output_fn` using `mlflow.pyfunc`. Edit to match your model flavour (sklearn, pytorch, etc.) and input/output format.
+Then `tf-apply` and `deploy-status` will print the public HTTPS URL.
 
-`deploy <run-id>` then:
+## Teardown
 
-1. Fetches model artifacts from MLflow by run ID
-2. Places `inference.py` under `code/` inside `model.tar.gz`
-3. Uploads to S3
-4. Creates/updates the SageMaker endpoint via Terraform
+`teardown` destroys all cloud infrastructure safely:
 
-## Starter notebook
+1. Backs up MLflow database from EC2
+2. Offers to pull DVC data locally
+3. Clears orphaned ENIs and drains the ECR repo
+4. Runs `tofu destroy` for ordered state-managed deletion
+5. Runs `aws-nuke` to sweep any remaining resources (wizard IAM user, state bucket, etc.)
 
-`notebooks/starter.ipynb` shows the full loop — load data, train with MLflow tracking, log the model, push data with DVC, deploy. Works in both local and cloud mode.
+After teardown, re-provisioning requires:
+
+```sh
+tf-bootstrap       # state bucket was nuked — recreate it
+tf-init
+tf-apply
+restore            # recover MLflow experiments + push DVC data back
+```
 
 ## Customising the EC2 VM
 
-The VM runs NixOS. Add packages, services, or any NixOS module attributes by setting `TF_VAR_ec2_extra_nix_config` in the root `devenv.nix` — no need to touch the Terraform module:
+The VM runs NixOS. Add packages or services without touching the Terraform module:
 
 ```nix
 # devenv.nix
-{ pkgs, ... }: {
-  imports = [ ./infra/devenv.nix ];
-  # ...
-
-  env.TF_VAR_ec2_extra_nix_config = ''
-    environment.systemPackages = with pkgs; [ htop ripgrep ];
-    services.prometheus.enable = true;
-  '';
-}
+env.TF_VAR_ec2_extra_nix_config = ''
+  environment.systemPackages = with pkgs; [ htop ripgrep ];
+  services.prometheus.enable = true;
+'';
 ```
 
-Then apply:
+Then `tf-plan && tf-apply` to apply, or `nixos-rebuild` to push without replacing the instance.
 
-```sh
-tf-plan
-tf-apply
-```
+## AWS auth
 
-## AWS auth setup
+### IAM user keys (default, solo use)
 
-The setup wizard supports two methods:
+The wizard automates this end-to-end. It creates `<project>-deploy` with `AdministratorAccess` and writes the keys to `.devenv-configs/.aws/credentials`.
 
-### Option 1 — IAM user access keys (default, good for solo use)
-
-The wizard automates this fully — see [Step 2](#step-2--get-temporary-credentials-for-the-setup-wizard) above for where to get the bootstrap credentials. It will:
-
-1. Create a dedicated IAM user `<project>-deploy`
-2. Attach `AdministratorAccess` (or a scoped policy — your choice)
-3. Generate access keys and write them to `.devenv-configs/.aws/credentials`
-
-Reference: [AWS — Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html)
-
-### Option 2 — IAM Identity Center (SSO, for teams)
-
-Shorter-lived credentials, centralised access control.
+### IAM Identity Center / SSO (teams)
 
 1. Enable **IAM Identity Center** in your AWS account
 2. Create a user and assign the `AdministratorAccess` permission set
 3. Note your **SSO start URL** (e.g. `https://my-org.awsapps.com/start`)
 4. Enter the URL, account ID, and role name in the setup wizard
-5. Run `aws-login` to open the browser auth flow
-
-Reference: [AWS — Getting started with IAM Identity Center](https://docs.aws.amazon.com/singlesignon/latest/userguide/getting-started.html)
-
----
-
-## Re-run setup
-
-```sh
-setup              # wipes local.env and re-runs the wizard
-```
+5. Run `aws-login` when credentials expire
 
 ## Project structure
 
 ```
 nix-ml-solo/
-├── devenv.nix          # DS entry point — Python, uv, ML packages
-├── pyproject.toml      # Python dependencies (managed by uv)
+├── devenv.nix              # single source of truth: project, env, ports
+├── pyproject.toml          # Python dependencies (managed by uv)
+├── src/
+│   ├── train.py            # starter training script
+│   └── inference.py        # SageMaker inference handler
+├── notebooks/
+│   └── starter.ipynb       # full loop: load → train → log → deploy
 └── infra/
-    ├── devenv.nix      # AWS, Terraform, devenv scripts
-    ├── scripts.nix     # all devenv script definitions
-    ├── scripts/        # shell scripts called by devenv
-    ├── terraform/      # OpenTofu modules
-    │   └── modules/
-    │       ├── ec2/             # NixOS VM + MLflow
-    │       ├── s3/              # DVC data bucket
-    │       ├── nix-cache/       # Nix binary cache bucket
-    │       ├── sagemaker/       # inference endpoint (off by default)
-    │       ├── sagemaker-training/  # ECR + training job config
-    │       └── state-bootstrap/ # S3 state bucket (run once)
-    └── container/      # Dockerfile + entrypoint for SageMaker
+    ├── devenv.nix          # infra tooling (tofu, gum, mutagen, aws-nuke)
+    ├── scripts.nix         # devenv script definitions (routing table)
+    ├── scripts/
+    │   ├── _lib.sh         # shared guards + helpers
+    │   ├── _wizard.sh      # first-time setup wizard
+    │   ├── enter-shell.sh  # shell entrypoint
+    │   ├── aws/            # setup, aws-login, tf-bootstrap/init/plan/apply/destroy
+    │   ├── sync/           # sync-ec2, nixos-rebuild, nix-sync
+    │   ├── mlflow/         # mlflow-start/open/close
+    │   ├── jupyter/        # jupyter-ec2, tunnel management
+    │   ├── training/       # train, train-on-ec2, train-status, train-logs
+    │   ├── deploy/         # container-build, deploy, deploy-status
+    │   ├── nix/            # nix-cache-push/pull/configure
+    │   └── lifecycle/      # teardown, restore
+    └── terraform/
+        └── modules/
+            ├── ec2/                # NixOS VM, IAM roles, SG, VPC endpoints
+            ├── s3/                 # DVC data bucket
+            ├── nix-cache/          # Nix binary cache bucket + IAM policies
+            ├── sagemaker/          # inference endpoint + autoscaling
+            ├── sagemaker-training/ # ECR repo
+            ├── api-gateway-inference/ # public HTTPS wrapper (optional)
+            └── state-bootstrap/    # S3 state bucket + DynamoDB (run once)
 ```

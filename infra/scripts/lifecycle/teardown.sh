@@ -6,11 +6,21 @@ set -euo pipefail
 source "$PROJECT_ROOT/infra/scripts/_lib.sh"
 _require_cloud
 
+# Verify AWS credentials are alive before proceeding.
+# If they're dead (e.g. aws-nuke deleted keys in a prior run), warn and exit early.
+if ! aws sts get-caller-identity > /dev/null 2>&1; then
+  echo "" >&2
+  echo "  Error: AWS credentials are invalid or expired." >&2
+  echo "  Run 'setup' to generate fresh credentials, then re-run teardown." >&2
+  echo "" >&2
+  exit 1
+fi
+
 TF_DIR="$PROJECT_ROOT/infra/terraform"
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 BACKUP_DIR="$PROJECT_ROOT/backups/$(date +%Y-%m-%d-%H%M%S)"
 
-DVC_BUCKET=$(cd "$TF_DIR" && tofu output -raw dvc_bucket_name 2>/dev/null)
+DVC_BUCKET=$(cd "$TF_DIR" && tofu output -raw dvc_bucket_name 2>/dev/null || true)
 EC2_IP=$(cd "$TF_DIR" && tofu output -raw ec2_public_ip 2>/dev/null || true)
 
 _s3_size() {
@@ -24,11 +34,15 @@ echo "  ────────────────────────
 echo "  teardown — destroys ALL cloud infrastructure"
 echo "  ─────────────────────────────────────────────────────────"
 echo ""
-echo "  Calculating S3 storage sizes..."
-DVC_SIZE=$(_s3_size "$DVC_BUCKET")
+if [ -n "$DVC_BUCKET" ]; then
+  echo "  Calculating S3 storage sizes..."
+  DVC_SIZE=$(_s3_size "$DVC_BUCKET")
+else
+  DVC_SIZE="unknown (state already destroyed)"
+fi
 
 echo ""
-echo "  DVC data (s3://$DVC_BUCKET): $DVC_SIZE"
+echo "  DVC data (s3://${DVC_BUCKET:-<unknown>}): $DVC_SIZE"
 echo "  Nix cache: regenerable — skipping"
 echo ""
 
@@ -192,6 +206,12 @@ if [ -n "$ACCOUNT_ID" ] && command -v aws-nuke &>/dev/null; then
   # Create one scoped to this project if none exists.
   aws iam create-account-alias --account-alias "${PROJECT}" 2>/dev/null || true
 
+  # Exclude the IAM user running this script — aws-nuke would otherwise delete
+  # its own access keys mid-run, causing all subsequent API calls to fail with
+  # InvalidAccessKeyId and leaving the S3 state bucket and the user itself behind.
+  CALLER_USER=$(aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null \
+    | sed 's|.*/||' || echo "")
+
   NUKE_CONFIG=$(mktemp --suffix=.yaml)
   cat > "$NUKE_CONFIG" <<YAML
 regions:
@@ -206,6 +226,13 @@ accounts:
     filters:
       IAMUser:
         - "root"
+        - "${CALLER_USER}"
+      IAMUserAccessKey:
+        - type: "regex"
+          value: "^${CALLER_USER} -> .*"
+      IAMUserPolicyAttachment:
+        - type: "regex"
+          value: "^${CALLER_USER} -> .*"
 YAML
 
   aws-nuke run \
@@ -215,6 +242,29 @@ YAML
     2>&1 | grep -Ev "^(Scan|aws-nuke version|No resource|time=)" || true
 
   rm -f "$NUKE_CONFIG"
+
+  # Now that nuke is done (and the deploy user still has valid credentials),
+  # delete the wizard-created IAM user explicitly as the final step.
+  DEPLOY_USER="${PROJECT}-deploy"
+  if aws iam get-user --user-name "$DEPLOY_USER" > /dev/null 2>&1; then
+    echo "  Deleting IAM user $DEPLOY_USER..."
+    # Detach policies
+    aws iam list-attached-user-policies --user-name "$DEPLOY_USER" \
+      --query 'AttachedPolicies[*].PolicyArn' --output text 2>/dev/null \
+      | tr '\t' '\n' | while read -r arn; do
+          [ -z "$arn" ] && continue
+          aws iam detach-user-policy --user-name "$DEPLOY_USER" --policy-arn "$arn" 2>/dev/null || true
+        done
+    # Delete access keys
+    aws iam list-access-keys --user-name "$DEPLOY_USER" \
+      --query 'AccessKeyMetadata[*].AccessKeyId' --output text 2>/dev/null \
+      | tr '\t' '\n' | while read -r key; do
+          [ -z "$key" ] && continue
+          aws iam delete-access-key --user-name "$DEPLOY_USER" --access-key-id "$key" 2>/dev/null || true
+        done
+    aws iam delete-user --user-name "$DEPLOY_USER" 2>/dev/null || true
+    echo "  IAM user $DEPLOY_USER deleted."
+  fi
 fi
 
 echo ""
