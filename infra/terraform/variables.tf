@@ -57,13 +57,6 @@ variable "ec2_extra_nix_config" {
   default     = ""
 }
 
-# SageMaker training
-variable "sagemaker_training_image_uri" {
-  description = "ECR image URI for training container (can be same as inference). Empty = ECR repo created but no default image set."
-  type        = string
-  default     = ""
-}
-
 # SageMaker inference
 variable "sagemaker_model_image_uri" {
   description = "ECR image URI for the SageMaker model container (leave empty to skip endpoint creation)"

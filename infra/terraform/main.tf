@@ -74,7 +74,6 @@ module "sagemaker" {
   scale_out_cooldown                     = var.sagemaker_scale_out_cooldown
   target_invocations_per_instance        = var.sagemaker_target_invocations_per_instance
   execution_role_arn        = module.ec2[0].sagemaker_role_arn
-  nix_cache_bucket          = module.nix_cache.bucket_name
   nix_cache_pull_policy_arn = module.nix_cache.pull_policy_arn
   mlflow_tracking_uri       = "http://${module.ec2[0].private_ip}:${var.mlflow_port}"
   subnet_ids                = module.ec2[0].subnet_ids
@@ -105,9 +104,5 @@ module "sagemaker_training" {
   environment        = var.environment
   aws_region         = var.aws_region
   execution_role_arn = module.ec2[0].sagemaker_role_arn
-  training_image_uri = var.sagemaker_training_image_uri
   dvc_bucket_name    = module.s3.dvc_bucket_name
-  nix_cache_bucket   = module.nix_cache.bucket_name
-  ec2_instance_id    = module.ec2[0].instance_id
-  ec2_public_ip      = module.ec2[0].public_ip
 }

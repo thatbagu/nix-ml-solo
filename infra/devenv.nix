@@ -22,6 +22,7 @@ in
     pkgs.skopeo    # Push nixpkgs buildLayeredImage tarballs to ECR (crane can't parse them)
     pkgs.gum       # TUI prompts for setup wizard
     pkgs.mutagen   # Bidirectional real-time sync local <-> EC2
+    pkgs.aws-nuke  # Nuclear teardown — deletes all AWS resources in the account
   ];
 
   env = {

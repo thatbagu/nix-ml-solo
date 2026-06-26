@@ -7,7 +7,7 @@ _require_cloud
 STAMPS="$DEVENV_ROOT/.devenv-configs"
 
 # 1. Mutagen — bidirectional file sync
-if ! mutagen sync list nix-ml-solo 2>/dev/null | grep -q "Watching"; then
+if ! mutagen sync list "${TF_VAR_project:-nix-ml-solo}" 2>/dev/null | grep -q "Watching"; then
   echo "[ sync ] starting file sync session…"
   sync-ec2
 else

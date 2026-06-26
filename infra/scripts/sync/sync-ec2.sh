@@ -5,16 +5,19 @@ source "$PROJECT_ROOT/infra/scripts/_lib.sh"
 _require_cloud
 _require_ssh
 
+PROJECT="${TF_VAR_project:-nix-ml-solo}"
+SSH_HOST="${PROJECT}-ec2"
+
 EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
 
 # Write SSH config entry so mutagen can reach EC2 with the right key.
 # The IP is dynamic (changes on EC2 restart), so we regenerate each time.
 mkdir -p "$HOME/.ssh/config.d"
-cat > "$HOME/.ssh/config.d/nix-ml-solo" <<EOF
-Host nix-ml-solo-ec2
+cat > "$HOME/.ssh/config.d/${PROJECT}" <<EOF
+Host ${SSH_HOST}
   HostName $EC2_IP
   User ml
-  IdentityFile ${SSH_IDENTITY_FILE:-$HOME/.ssh/nix-ml-solo}
+  IdentityFile ${SSH_IDENTITY_FILE:-$HOME/.ssh/${PROJECT}}
   IdentitiesOnly yes
   StrictHostKeyChecking accept-new
 EOF
@@ -27,16 +30,16 @@ if ! grep -q "Include config.d/\*" "$HOME/.ssh/config" 2>/dev/null; then
 fi
 
 # Terminate any existing session and recreate (handles IP changes after restart)
-mutagen sync terminate nix-ml-solo 2>/dev/null || true
+mutagen sync terminate "${PROJECT}" 2>/dev/null || true
 mutagen sync create \
-  --name nix-ml-solo \
+  --name "${PROJECT}" \
   --mode two-way-resolved \
   --ignore-vcs \
   --ignore '.devenv' --ignore '.direnv' --ignore '.devenv-configs' \
   --ignore '.venv' --ignore 'mlruns' --ignore '__pycache__' \
   --ignore '*.pyc' --ignore '*.db' \
   "$PROJECT_ROOT" \
-  "nix-ml-solo-ec2:/home/ml/project"
+  "${SSH_HOST}:/home/ml/project"
 
 echo "Sync session started — bidirectional, real-time."
 echo "Run 'sync-ec2-status' to check, 'sync-ec2-stop' to terminate."

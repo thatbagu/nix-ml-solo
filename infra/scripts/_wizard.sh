@@ -18,13 +18,7 @@ _run_wizard() {
     "Run 'setup' anytime to reconfigure."
 
   # ── Basic config ─────────────────────────────────────────────────────────────
-
-  _gum_input_default \
-    "TF_VAR_project" \
-    "Project name  (3-63 chars, lowercase, letters/digits/hyphens)" \
-    "nix-ml-solo" \
-    _valid_project_name \
-    "Must be 3-63 lowercase chars, start with a letter, only a-z 0-9 -"
+  # Project name and environment come from devenv.nix — not asked here.
 
   _gum_region \
     "TF_VAR_aws_region" \
@@ -366,8 +360,8 @@ POLICY
           --border rounded --border-foreground 212 \
           --padding "0 2" --margin "1 0" \
           "$(gum style --bold 'Setup complete')" \
-          "  MLflow    → http://localhost:5000" \
-          "  Jupyter   → http://localhost:8888" \
+          "  MLflow    → http://localhost:${MLFLOW_PORT:-5000}" \
+          "  Jupyter   → http://localhost:${JUPYTER_PORT:-8888}" \
           "  File sync → mutagen (bidirectional, real-time)" \
           "" \
           "  train <script>   — run training" \

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+PORT="${JUPYTER_PORT:-8888}"
+
 case "${INFRA_MODE:-local}" in
   cloud)
     source "$PROJECT_ROOT/infra/scripts/_lib.sh"
@@ -10,6 +12,6 @@ case "${INFRA_MODE:-local}" in
   *)
     echo "Opening JupyterLab locally…"
     cd "$PROJECT_ROOT"
-    uv run jupyter lab --no-browser --port 8888
+    uv run jupyter lab --no-browser --port "${PORT}"
     ;;
 esac

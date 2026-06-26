@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-pkill -f "ssh.*5000:localhost:5000" && echo "MLflow tunnel closed." || echo "No tunnel running."
+PORT="${MLFLOW_PORT:-5000}"
+pkill -f "ssh.*${PORT}:localhost:${PORT}" && echo "MLflow tunnel closed." || echo "No tunnel running."

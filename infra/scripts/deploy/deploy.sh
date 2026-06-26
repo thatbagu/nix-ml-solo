@@ -43,10 +43,10 @@ case "$MODE" in
     echo "▶ Serving model locally"
     echo "  Run ID   : $RUN_ID"
     echo "  Artifact : $ARTIFACT_PATH"
-    echo "  Endpoint : http://localhost:5001/invocations"
+    echo "  Endpoint : http://localhost:${INFERENCE_PORT:-5001}/invocations"
     echo ""
     echo "  Test with:"
-    echo "    curl -X POST http://localhost:5001/invocations \\"
+    echo "    curl -X POST http://localhost:${INFERENCE_PORT:-5001}/invocations \\"
     echo "      -H 'Content-Type: application/json' \\"
     echo "      -d '{\"dataframe_split\": {\"columns\": [...], \"data\": [[...]]}}'"
     echo ""
@@ -56,7 +56,7 @@ case "$MODE" in
     uv run mlflow models serve \
       --model-uri "runs:/$RUN_ID/$ARTIFACT_PATH" \
       --host 127.0.0.1 \
-      --port 5001 \
+      --port "${INFERENCE_PORT:-5001}" \
       --env-manager local
     ;;
 
@@ -78,7 +78,7 @@ case "$MODE" in
     _require_ssh
 
     # Auto-ensure MLflow is reachable for artifact download
-    if ! curl -sf http://localhost:5000/health > /dev/null 2>&1; then
+    if ! curl -sf "http://localhost:${MLFLOW_PORT:-5000}/health" > /dev/null 2>&1; then
       echo "[ deploy ] MLflow not reachable — connecting..."
       mlflow-open
     fi

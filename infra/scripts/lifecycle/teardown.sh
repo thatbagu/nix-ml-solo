@@ -94,21 +94,133 @@ fi
 # ── Stop background processes ─────────────────────────────────────────────────
 echo ""
 echo "  Stopping file sync..."
-mutagen sync terminate nix-ml-solo 2>/dev/null || true
+mutagen sync terminate "${TF_VAR_project:-nix-ml-solo}" 2>/dev/null || true
 
 echo "  Closing SSH tunnels..."
-pkill -f "ssh.*5000:localhost:5000" 2>/dev/null || true
-pkill -f "ssh.*8888:localhost:8888" 2>/dev/null || true
+pkill -f "ssh.*${MLFLOW_PORT:-5000}:localhost:${MLFLOW_PORT:-5000}" 2>/dev/null || true
+pkill -f "ssh.*${JUPYTER_PORT:-8888}:localhost:${JUPYTER_PORT:-8888}" 2>/dev/null || true
 
 # ── Destroy ───────────────────────────────────────────────────────────────────
+# VPC interface endpoints (ECR API/DKR) and SageMaker model endpoints both
+# create ENIs attached to the sagemaker SG. AWS removes them asynchronously
+# after resource deletion — if we let tofu destroy everything at once it hits
+# the SG before ENIs are gone and fails with DependencyViolation.
+# Fix: pre-destroy the ENI-creating resources in order, poll until ENIs are
+# released, then run the full destroy which will find the SG already free.
+
+PROJECT="${TF_VAR_project:-nix-ml-solo}"
+ENV="${TF_VAR_environment:-dev}"
+
 echo ""
 echo "  Destroying infrastructure..."
-cd "$TF_DIR"
-tofu destroy -auto-approve
+
+# Record the sagemaker SG id now so we can poll for ENI release later.
+SG_ID=$(aws ec2 describe-security-groups \
+  --filters "Name=group-name,Values=${PROJECT}-${ENV}-sagemaker-sg" \
+  --query 'SecurityGroups[0].GroupId' \
+  --output text --region "$REGION" 2>/dev/null || echo "")
+
+# Step 1: remove SageMaker endpoint + model (they create ENIs via vpc_config)
+echo "  [1/3] removing SageMaker endpoint..."
+(cd "$TF_DIR" && tofu destroy -auto-approve \
+  -target "module.sagemaker[0].aws_sagemaker_endpoint.endpoint[0]" \
+  -target "module.sagemaker[0].aws_sagemaker_endpoint_configuration.config[0]" \
+  -target "module.sagemaker[0].aws_sagemaker_model.model[0]") 2>/dev/null || true
+
+# Step 2: remove ECR VPC interface endpoints (each creates ENIs in the same SG)
+echo "  [2/3] removing VPC interface endpoints..."
+(cd "$TF_DIR" && tofu destroy -auto-approve \
+  -target "module.ec2[0].aws_vpc_endpoint.ecr_api" \
+  -target "module.ec2[0].aws_vpc_endpoint.ecr_dkr") 2>/dev/null || true
+
+# Step 3: clear ENIs from the security group.
+# VPC endpoint / SageMaker ENIs are removed asynchronously by AWS. If a
+# previous partial destroy left one orphaned (available state, no owner),
+# we delete it directly — AWS won't clean it up on its own.
+if [ -n "${SG_ID:-}" ] && [ "$SG_ID" != "None" ]; then
+  echo "  [3/3] clearing ENIs from $SG_ID..."
+  for i in $(seq 1 24); do
+    ENIS=$(aws ec2 describe-network-interfaces \
+      --filters "Name=group-id,Values=$SG_ID" \
+      --query 'NetworkInterfaces[*].{Id:NetworkInterfaceId,Status:Status}' \
+      --output json --region "$REGION" 2>/dev/null || echo "[]")
+
+    ENI_COUNT=$(echo "$ENIS" | jq 'length')
+    [ "${ENI_COUNT:-0}" -eq 0 ] && { echo "  ENIs cleared."; break; }
+
+    # Delete any available (orphaned) ENIs immediately rather than waiting.
+    echo "$ENIS" | jq -r '.[] | select(.Status=="available") | .Id' \
+      | while read -r ENI_ID; do
+          [ -z "$ENI_ID" ] && continue
+          echo "  Deleting orphaned ENI $ENI_ID..."
+          aws ec2 delete-network-interface \
+            --network-interface-id "$ENI_ID" --region "$REGION" 2>/dev/null || true
+        done
+
+    printf "  %s ENI(s) in-use — waiting for AWS cleanup (%s/24)…\r" "$ENI_COUNT" "$i"
+    sleep 15
+  done
+fi
+
+# Step 4: drain ECR images (force_delete=true only applies after the next apply).
+# Name is deterministic — don't rely on tofu output which may be stale mid-destroy.
+ECR_REPO="${PROJECT}-${ENV}-ml"
+IMAGE_IDS=$(aws ecr list-images \
+  --repository-name "$ECR_REPO" --region "$REGION" \
+  --query 'imageIds' --output json 2>/dev/null || echo "[]")
+if [ "$IMAGE_IDS" != "[]" ] && [ "$IMAGE_IDS" != "null" ]; then
+  echo "  [4/4] draining ECR repo $ECR_REPO..."
+  aws ecr batch-delete-image \
+    --repository-name "$ECR_REPO" --region "$REGION" \
+    --image-ids "$IMAGE_IDS" > /dev/null
+fi
+
+# Terraform destroy — handles ordered deletion of state-managed resources.
+# Run with || true: aws-nuke below is the guarantee, not tofu.
+echo "  Destroying terraform-managed resources..."
+(cd "$TF_DIR" && tofu destroy -auto-approve) || true
+
+# ── aws-nuke: catch everything terraform missed ───────────────────────────────
+# Covers orphaned ENIs, wizard-created IAM users, state backend bucket, and
+# anything else that slips through partial destroys or manual intervention.
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+if [ -n "$ACCOUNT_ID" ] && command -v aws-nuke &>/dev/null; then
+  echo ""
+  echo "  Running aws-nuke sweep..."
+
+  # aws-nuke v3 requires an account alias to proceed (safety gate).
+  # Create one scoped to this project if none exists.
+  aws iam create-account-alias --account-alias "${PROJECT}" 2>/dev/null || true
+
+  NUKE_CONFIG=$(mktemp --suffix=.yaml)
+  cat > "$NUKE_CONFIG" <<YAML
+regions:
+  - ${REGION}
+  - global
+
+blocklist:
+  - "000000000000"
+
+accounts:
+  "${ACCOUNT_ID}":
+    filters:
+      IAMUser:
+        - "root"
+YAML
+
+  aws-nuke run \
+    --config "$NUKE_CONFIG" \
+    --no-dry-run \
+    --force \
+    2>&1 | grep -Ev "^(Scan|aws-nuke version|No resource|time=)" || true
+
+  rm -f "$NUKE_CONFIG"
+fi
 
 echo ""
 echo "  ─────────────────────────────────────────────────────────"
 echo "  Done. Cloud infrastructure destroyed."
 echo "  Backup: $BACKUP_DIR"
 echo "  Run 'setup' to provision again, then 'restore' to recover data."
+echo "  Note: re-run 'tf-bootstrap' before 'tf-apply' (state bucket was nuked)."
 echo "  ─────────────────────────────────────────────────────────"

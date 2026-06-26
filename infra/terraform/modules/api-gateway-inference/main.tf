@@ -109,3 +109,14 @@ resource "aws_api_gateway_stage" "stage" {
   deployment_id = aws_api_gateway_deployment.deploy.id
   stage_name    = var.environment
 }
+
+resource "aws_api_gateway_method_settings" "throttle" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  stage_name  = aws_api_gateway_stage.stage.stage_name
+  method_path = "*/*"
+
+  settings {
+    throttling_burst_limit = 50
+    throttling_rate_limit  = 100
+  }
+}

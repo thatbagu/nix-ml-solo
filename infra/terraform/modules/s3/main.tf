@@ -32,6 +32,45 @@ resource "aws_s3_bucket_public_access_block" "dvc" {
   restrict_public_buckets = true
 }
 
+resource "aws_s3_bucket_lifecycle_configuration" "dvc" {
+  bucket = aws_s3_bucket.dvc.id
+
+  # SageMaker training outputs and uploaded notebooks are ephemeral
+  rule {
+    id     = "expire-training-output"
+    status = "Enabled"
+
+    filter {
+      prefix = "training-output/"
+    }
+
+    expiration {
+      days = 90
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
+
+  rule {
+    id     = "expire-notebook-uploads"
+    status = "Enabled"
+
+    filter {
+      prefix = "notebooks/"
+    }
+
+    expiration {
+      days = 30
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 7
+    }
+  }
+}
+
 locals {
   tags = {
     Project     = var.project

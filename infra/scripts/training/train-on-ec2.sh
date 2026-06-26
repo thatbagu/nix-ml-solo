@@ -17,7 +17,7 @@ SSH="ssh -i $SSH_IDENTITY_FILE -o StrictHostKeyChecking=accept-new -o BatchMode=
 EC2_DVC=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw dvc_remote_url 2>/dev/null || echo "${DVC_REMOTE_URL:-}")
 
 echo "▶ Training on EC2: $SCRIPT $*"
-echo "  MLflow : http://localhost:5000"
+echo "  MLflow : http://localhost:${MLFLOW_PORT:-5000}"
 echo ""
 
 case "$SCRIPT" in
@@ -25,14 +25,14 @@ case "$SCRIPT" in
     OUT="${SCRIPT%.ipynb}-executed.ipynb"
     $SSH "ml@$EC2_IP" "
       cd ~/project
-      MLFLOW_TRACKING_URI=http://localhost:5000 \
+      MLFLOW_TRACKING_URI=http://localhost:${MLFLOW_PORT:-5000} \
       DVC_REMOTE_URL=$EC2_DVC \
       devenv shell -- uv run papermill '$SCRIPT' '$OUT' $*"
     ;;
   *)
     $SSH "ml@$EC2_IP" "
       cd ~/project
-      MLFLOW_TRACKING_URI=http://localhost:5000 \
+      MLFLOW_TRACKING_URI=http://localhost:${MLFLOW_PORT:-5000} \
       DVC_REMOTE_URL=$EC2_DVC \
       devenv shell -- uv run python '$SCRIPT' $*"
     ;;

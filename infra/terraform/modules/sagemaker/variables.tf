@@ -63,10 +63,6 @@ variable "execution_role_arn" {
   type        = string
 }
 
-variable "nix_cache_bucket" {
-  type = string
-}
-
 variable "nix_cache_pull_policy_arn" {
   type = string
 }

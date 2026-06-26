@@ -50,13 +50,13 @@ case "$MODE" in
   # ── Cloud ──────────────────────────────────────────────────────────────────
   cloud)
     # Auto-ensure file sync is running
-    if ! mutagen sync list nix-ml-solo 2>/dev/null | grep -q "Watching"; then
+    if ! mutagen sync list "${TF_VAR_project:-nix-ml-solo}" 2>/dev/null | grep -q "Watching"; then
       echo "[ train ] file sync not running — starting..."
       sync-ec2
     fi
 
     # Auto-ensure MLflow tunnel is open
-    if ! curl -sf http://localhost:5000/health > /dev/null 2>&1; then
+    if ! curl -sf "http://localhost:${MLFLOW_PORT:-5000}/health" > /dev/null 2>&1; then
       echo "[ train ] MLflow tunnel not open — connecting..."
       mlflow-open
     fi
@@ -106,7 +106,7 @@ case "$MODE" in
     echo "  Image   : $ECR_URI:latest"
     echo "  Data    : s3://$DVC_BUCKET/data/train/"
     echo "  Output  : s3://$DVC_BUCKET/training-output/$JOB_NAME/"
-    echo "  MLflow  : http://$EC2_IP:5000"
+    echo "  MLflow  : http://$EC2_IP:${MLFLOW_PORT:-5000}"
     echo ""
 
     aws sagemaker create-training-job \
@@ -130,7 +130,7 @@ case "$MODE" in
       --environment "{
         \"NIX_CACHE_BUCKET\":     \"$NIX_BUCKET\",
         \"AWS_DEFAULT_REGION\":   \"$REGION\",
-        \"MLFLOW_TRACKING_URI\":  \"http://$EC2_IP:5000\",
+        \"MLFLOW_TRACKING_URI\":  \"http://$EC2_IP:${MLFLOW_PORT:-5000}\",
         \"TRAINING_SCRIPT\":      \"$CONTAINER_SCRIPT\",
         \"TRAINING_SCRIPT_ARGS\": \"$EXTRA_ARGS\"
       }"
