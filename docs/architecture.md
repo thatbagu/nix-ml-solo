@@ -13,37 +13,35 @@ The central idea in nix-ml-solo is that `devenv.nix` defines a single Nix enviro
 
 This eliminates the "works on my machine" problem for ML: if your training script runs locally, it runs on SageMaker, because the Nix closure that produced the environment is bit-for-bit identical.
 
-## C4 Container diagram
+## Diagram
 
 ```mermaid
-C4Container
-    title nix-ml-solo: one Nix environment, three materializations
+flowchart TB
+    dev(["ML Engineer"])
 
-    Person(engineer, "ML Engineer", "Solo practitioner")
+    subgraph env ["One Nix environment &mdash; devenv.nix"]
+        direction LR
+        local["Local shell\n─────────────\ndevenv · Nix · Python"]
+        ec2["EC2 NixOS VM\n─────────────\nMLflow server"]
+        sm["SageMaker\n─────────────\ntraining · inference"]
+    end
 
-    System_Boundary(env, "Unified environment - defined once in devenv.nix") {
-        Container(local, "Local shell", "devenv, Nix, Python, uv", "Development, experiments, all commands")
-        Container(ec2, "EC2 NixOS VM", "NixOS", "MLflow server, SSH endpoint, remote training")
-        Container(sagemaker, "SageMaker container", "OCI, same Nix closure + venv", "Training jobs, inference endpoint")
-    }
+    mlflow[("MLflow\nexperiments")]
+    dvc[("DVC · S3\ntraining data")]
+    nixcache[("S3 Nix cache\nbinary store")]
 
-    ContainerDb(nix_cache, "Nix binary cache", "S3", "Pre-built store paths shared by all three runtimes")
-    ContainerDb(mlflow_db, "MLflow", "SQLite on EC2 EBS", "Experiments, runs, model registry")
-    ContainerDb(dvc_store, "DVC store", "S3", "Versioned training datasets and artifacts")
-    Container(ecr, "ECR", "Container registry", "Image layers: Nix closure + Python venv + entrypoint")
+    dev --> local
 
-    Rel(engineer, local, "devenv shell / commands", "fish / bash")
-    Rel(local, ec2, "mutagen file sync", "SSH")
-    Rel(ec2, local, "mutagen file sync", "SSH")
-    Rel(local, ec2, "MLflow SSH tunnel", "port 5000")
-    Rel(local, nix_cache, "nix-sync: push devenv closure", "s3://")
-    Rel(ec2, nix_cache, "nixos-rebuild: pull packages", "s3://")
-    Rel(local, ecr, "container-build: push layers", "skopeo + crane")
-    Rel(sagemaker, ecr, "pull image on job start", "HTTPS")
-    Rel(local, mlflow_db, "log metrics + artifacts", "HTTP via tunnel")
-    Rel(sagemaker, mlflow_db, "log training metrics", "HTTP")
-    Rel(local, dvc_store, "dvc push / pull", "s3://")
-    Rel(sagemaker, dvc_store, "dvc pull training data", "s3://")
+    local <-->|"mutagen\nfile sync"| ec2
+    ec2 -. "hosts" .-> mlflow
+    local -->|"SSH tunnel"| mlflow
+    sm -->|"log metrics"| mlflow
+
+    local <-->|"dvc push / pull"| dvc
+    sm -->|"dvc pull"| dvc
+
+    local -->|"nix-sync push"| nixcache
+    ec2 & sm -->|"pull packages"| nixcache
 ```
 
 ## Why this works
