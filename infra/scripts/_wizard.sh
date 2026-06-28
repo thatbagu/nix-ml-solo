@@ -143,73 +143,103 @@ _run_wizard() {
     local project="${TF_VAR_project:-nix-ml-solo}"
     local iam_user="${project}-deploy"
 
-    gum style \
-      --border normal --border-foreground 240 \
-      --padding "0 1" --margin "1 0" \
-      "We'll create IAM user '${iam_user}' with permanent access keys." \
-      "Temporary admin credentials are needed once — never saved to disk." \
-      "" \
-      "$(gum style --bold 'Root account (brand-new AWS account):')" \
-      "  console.aws.amazon.com → your name (top-right) → Security credentials" \
-      "  → Access keys → Create access key → CLI → copy both values" \
-      "" \
-      "$(gum style --bold 'Existing IAM admin user:')" \
-      "  IAM → Users → your name → Security credentials tab → Create access key"
-
-    local boot_key_id
-    while true; do
-      boot_key_id=$(gum input \
-        --header "Bootstrap AWS Access Key ID  (starts with AKIA or ASIA, 20 chars)" \
-        --placeholder "AKIAIOSFODNN7EXAMPLE")
-      _valid_aws_key_id "$boot_key_id" && break
-      gum log --level error "Invalid. Must start with AKIA or ASIA and be exactly 20 uppercase alphanumeric chars."
-    done
-
-    local boot_secret
-    boot_secret=$(gum input --password \
-      --header "Bootstrap AWS Secret Access Key")
-
-    export AWS_ACCESS_KEY_ID="$boot_key_id"
-    export AWS_SECRET_ACCESS_KEY="$boot_secret"
-    export AWS_DEFAULT_REGION="$region"
-    local saved_profile="${AWS_PROFILE:-}"
-    unset AWS_PROFILE AWS_CONFIG_FILE AWS_SHARED_CREDENTIALS_FILE
-
-    gum log --level info "Verifying bootstrap credentials…"
-    local verify_output verify_exit
-    verify_output=$(aws sts get-caller-identity --output text --query 'Account' 2>&1) &&
-      verify_exit=0 || verify_exit=$?
-
-    [ -n "$saved_profile" ] && export AWS_PROFILE="$saved_profile"
-    export AWS_CONFIG_FILE="$CONFIGS/.aws/config"
-    export AWS_SHARED_CREDENTIALS_FILE="$CONFIGS/.aws/credentials"
-
-    if [ "$verify_exit" -ne 0 ]; then
-      gum log --level error "Could not authenticate: $verify_output"
-      gum log --level error "Check the credentials and run 'setup' to retry."
-      set +euo pipefail
-      return 1
-    fi
-
-    unset AWS_PROFILE AWS_CONFIG_FILE AWS_SHARED_CREDENTIALS_FILE
-
-    local account_id
-    account_id="$verify_output"
-    gum log --level info "Authenticated as account ${account_id}."
-
-    if aws iam get-user --user-name "$iam_user" >/dev/null 2>&1; then
-      gum log --level info "IAM user '${iam_user}' already exists, skipping creation."
+    # Fast path: if deploy credentials already work, offer to skip IAM setup.
+    # The escape hatch (answering No) lets the user provide root/admin credentials
+    # to attach or update permissions on the deploy user.
+    if aws sts get-caller-identity \
+      --profile "$profile" \
+      --no-cli-pager >/dev/null 2>&1 &&
+      gum confirm "Existing '${iam_user}' credentials are valid. Skip IAM setup?"; then
+      gum log --level info "Skipping IAM setup."
+      unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+      export AWS_PROFILE="$profile"
+      export AWS_CONFIG_FILE="$CONFIGS/.aws/config"
+      export AWS_SHARED_CREDENTIALS_FILE="$CONFIGS/.aws/credentials"
     else
-      gum spin --spinner dot --title "Creating IAM user '${iam_user}'…" -- \
-        aws iam create-user --user-name "$iam_user" >/dev/null
-    fi
+      gum style \
+        --border normal --border-foreground 240 \
+        --padding "0 1" --margin "1 0" \
+        "We'll create IAM user '${iam_user}' with permanent access keys." \
+        "Temporary admin credentials are needed once — never saved to disk." \
+        "" \
+        "$(gum style --bold 'Root account (brand-new AWS account):')" \
+        "  console.aws.amazon.com → your name (top-right) → Security credentials" \
+        "  → Access keys → Create access key → CLI → copy both values" \
+        "" \
+        "$(gum style --bold 'Existing IAM admin user:')" \
+        "  IAM → Users → your name → Security credentials tab → Create access key"
 
-    local policy_arn="arn:aws:iam::aws:policy/AdministratorAccess"
-    if ! gum confirm "Attach AdministratorAccess? (recommended for initial setup)"; then
-      gum log --level info "Creating scoped IAM policy for '${iam_user}'…"
-      local policy_doc
-      policy_doc=$(
-        cat <<POLICY
+      local boot_key_id
+      while true; do
+        boot_key_id=$(gum input \
+          --header "Bootstrap AWS Access Key ID  (starts with AKIA or ASIA, 20 chars)" \
+          --placeholder "AKIAIOSFODNN7EXAMPLE")
+        _valid_aws_key_id "$boot_key_id" && break
+        gum log --level error "Invalid. Must start with AKIA or ASIA and be exactly 20 uppercase alphanumeric chars."
+      done
+
+      local boot_secret
+      boot_secret=$(gum input --password \
+        --header "Bootstrap AWS Secret Access Key")
+
+      export AWS_ACCESS_KEY_ID="$boot_key_id"
+      export AWS_SECRET_ACCESS_KEY="$boot_secret"
+      export AWS_DEFAULT_REGION="$region"
+      local saved_profile="${AWS_PROFILE:-}"
+      unset AWS_PROFILE AWS_CONFIG_FILE AWS_SHARED_CREDENTIALS_FILE
+
+      gum log --level info "Verifying bootstrap credentials…"
+      local caller_json verify_exit
+      caller_json=$(aws sts get-caller-identity --output json 2>&1) &&
+        verify_exit=0 || verify_exit=$?
+
+      [ -n "$saved_profile" ] && export AWS_PROFILE="$saved_profile"
+      export AWS_CONFIG_FILE="$CONFIGS/.aws/config"
+      export AWS_SHARED_CREDENTIALS_FILE="$CONFIGS/.aws/credentials"
+
+      if [ "$verify_exit" -ne 0 ]; then
+        gum log --level error "Could not authenticate: $caller_json"
+        gum log --level error "Check the credentials and run 'setup' to retry."
+        set +euo pipefail
+        return 1
+      fi
+
+      unset AWS_PROFILE AWS_CONFIG_FILE AWS_SHARED_CREDENTIALS_FILE
+
+      local account_id caller_arn
+      account_id=$(echo "$caller_json" | grep -o '"Account": *"[^"]*"' | grep -o '[0-9]*')
+      caller_arn=$(echo "$caller_json" | grep -o '"Arn": *"[^"]*"' | sed 's/.*": *"//' | tr -d '"')
+      gum log --level info "Authenticated as ${caller_arn}."
+
+      if echo "$caller_arn" | grep -q "user/${iam_user}$"; then
+        # User entered their own deploy credentials (common on re-setup when root
+        # access is no longer handy). The ARN already proves the user exists —
+        # no need to call iam:GetUser (the deploy user may not have that permission).
+        gum log --level info "Deploy user '${iam_user}' confirmed — saving credentials to profile."
+        _write_iam_profile "$profile" "$boot_key_id" "$boot_secret" "$region"
+      else
+        # Admin/root credentials — full bootstrap: create user, attach policy, generate keys.
+        local user_exists=false
+        local get_user_out
+        get_user_out=$(aws iam get-user --user-name "$iam_user" 2>&1) && user_exists=true || true
+        if $user_exists; then
+          gum log --level info "IAM user '${iam_user}' already exists, skipping creation."
+        elif echo "$get_user_out" | grep -q "NoSuchEntity"; then
+          gum spin --spinner dot --title "Creating IAM user '${iam_user}'…" -- \
+            aws iam create-user --user-name "$iam_user" >/dev/null
+        else
+          gum log --level error "Could not check IAM user '${iam_user}': ${get_user_out}"
+          gum log --level error "Bootstrap credentials may lack iam:GetUser — use root or an IAM admin account."
+          set +euo pipefail
+          return 1
+        fi
+
+        local policy_arn="arn:aws:iam::aws:policy/AdministratorAccess"
+        if ! gum confirm "Attach AdministratorAccess? (recommended for initial setup)"; then
+          gum log --level info "Creating scoped IAM policy for '${iam_user}'…"
+          local policy_doc
+          policy_doc=$(
+            cat <<POLICY
 {
   "Version": "2012-10-17",
   "Statement": [{
@@ -222,76 +252,55 @@ _run_wizard() {
   }]
 }
 POLICY
-      )
-      policy_arn=$(aws iam create-policy \
-        --policy-name "${project}-deploy-policy" \
-        --policy-document "$policy_doc" \
-        --query 'Policy.Arn' --output text 2>/dev/null ||
-        echo "arn:aws:iam::${account_id}:policy/${project}-deploy-policy")
-    fi
+          )
+          policy_arn=$(aws iam create-policy \
+            --policy-name "${project}-deploy-policy" \
+            --policy-document "$policy_doc" \
+            --query 'Policy.Arn' --output text 2>/dev/null ||
+            echo "arn:aws:iam::${account_id}:policy/${project}-deploy-policy")
+        fi
 
-    gum spin --spinner dot --title "Attaching policy…" -- \
-      aws iam attach-user-policy --user-name "$iam_user" --policy-arn "$policy_arn" >/dev/null
+        gum spin --spinner dot --title "Attaching policy…" -- \
+          aws iam attach-user-policy --user-name "$iam_user" --policy-arn "$policy_arn" >/dev/null
 
-    local need_new_key=true
-    if aws sts get-caller-identity \
-      --profile "$profile" \
-      --no-cli-pager >/dev/null 2>&1; then
-      gum log --level info "Existing credentials in .devenv-configs still work — skipping key generation."
-      need_new_key=false
-    fi
+        local key_count
+        key_count=$(aws iam list-access-keys --user-name "$iam_user" \
+          --query 'length(AccessKeyMetadata)' --output text)
+        if [ "${key_count:-0}" -ge 2 ]; then
+          local oldest_key
+          oldest_key=$(aws iam list-access-keys --user-name "$iam_user" \
+            --query 'sort_by(AccessKeyMetadata, &CreateDate)[0].AccessKeyId' \
+            --output text)
+          gum log --level warn "IAM key quota full (2/2). Deleting oldest key: $oldest_key"
+          aws iam delete-access-key --user-name "$iam_user" --access-key-id "$oldest_key" >/dev/null
+        fi
 
-    if [ "$need_new_key" = true ]; then
-      local key_count
-      key_count=$(aws iam list-access-keys --user-name "$iam_user" \
-        --query 'length(AccessKeyMetadata)' --output text)
-      if [ "${key_count:-0}" -ge 2 ]; then
-        local oldest_key
-        oldest_key=$(aws iam list-access-keys --user-name "$iam_user" \
-          --query 'sort_by(AccessKeyMetadata, &CreateDate)[0].AccessKeyId' \
-          --output text)
-        gum log --level warn "IAM key quota full (2/2). Deleting oldest key: $oldest_key"
-        aws iam delete-access-key --user-name "$iam_user" --access-key-id "$oldest_key" >/dev/null
-      fi
+        gum log --level info "Generating permanent access keys…"
+        local keys new_key_id new_secret
+        keys=$(aws iam create-access-key --user-name "$iam_user" --output json)
+        new_key_id=$(echo "$keys" | jq -r '.AccessKey.AccessKeyId')
+        new_secret=$(echo "$keys" | jq -r '.AccessKey.SecretAccessKey')
 
-      gum log --level info "Generating permanent access keys…"
-      local keys new_key_id new_secret
-      keys=$(aws iam create-access-key --user-name "$iam_user" --output json)
-      new_key_id=$(echo "$keys" | jq -r '.AccessKey.AccessKeyId')
-      new_secret=$(echo "$keys" | jq -r '.AccessKey.SecretAccessKey')
-
-      unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-
-      local creds="$CONFIGS/.aws/credentials"
-      if grep -q "\[${profile}\]" "$creds" 2>/dev/null; then
-        sed -i.bak "/^\[${profile}\]/,/^\[/{
-            s|aws_access_key_id = .*|aws_access_key_id = ${new_key_id}|
-            s|aws_secret_access_key = .*|aws_secret_access_key = ${new_secret}|
-          }" "$creds" && rm -f "$creds.bak"
-      else
         _write_iam_profile "$profile" "$new_key_id" "$new_secret" "$region"
+
+        gum log --level info "Waiting for new credentials to propagate (~10s)…"
+        local try=1 max_tries=9
+        while [ $try -le $max_tries ]; do
+          sleep 5
+          if aws sts get-caller-identity --profile "$profile" \
+            --no-cli-pager >/dev/null 2>&1; then
+            gum log --level info "Credentials verified and active."
+            break
+          fi
+          if [ $try -eq $max_tries ]; then
+            gum log --level warn "Not active after $((max_tries * 5))s — will propagate shortly. Run 'aws-verify' to confirm."
+          else
+            gum log --level info "Not ready yet (${try}/${max_tries})…"
+          fi
+          try=$((try + 1))
+        done
       fi
 
-      export AWS_PROFILE="$profile"
-      export AWS_CONFIG_FILE="$CONFIGS/.aws/config"
-      export AWS_SHARED_CREDENTIALS_FILE="$CONFIGS/.aws/credentials"
-
-      gum log --level info "Waiting for new credentials to propagate (~10s)…"
-      local try=1 max_tries=9
-      while [ $try -le $max_tries ]; do
-        sleep 5
-        if aws sts get-caller-identity --profile "$profile" >/dev/null 2>&1; then
-          gum log --level info "Credentials verified and active."
-          break
-        fi
-        if [ $try -eq $max_tries ]; then
-          gum log --level warn "Not active after $((max_tries * 5))s — will propagate shortly. Run 'aws-verify' to confirm."
-        else
-          gum log --level info "Not ready yet (${try}/${max_tries})…"
-        fi
-        try=$((try + 1))
-      done
-    else
       unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
       export AWS_PROFILE="$profile"
       export AWS_CONFIG_FILE="$CONFIGS/.aws/config"
@@ -309,13 +318,14 @@ POLICY
 
   # ── Deploy infra (cloud mode only) ──────────────────────────────────────────
   if [ "${INFRA_MODE:-local}" = "cloud" ]; then
+    # shellcheck disable=SC2016
     gum style \
       --border rounded --border-foreground 212 \
       --padding "0 2" --margin "1 0" \
       "$(gum style --bold 'Deploy infrastructure')" \
       "tf-bootstrap → tf-init → tf-plan → tf-apply" \
       "Creates: EC2 (NixOS), S3, ECR, SageMaker config" \
-      "Estimated cost: ~\$36/month (EC2 + storage)"
+      'Estimated cost: ~$36/month (EC2 + storage)'
 
     if gum confirm "Deploy now?"; then
       echo ""

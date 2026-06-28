@@ -235,26 +235,28 @@ The wizard automates this end-to-end. It creates `<project>-deploy` with `Admini
 nix-ml-solo/
 ├── devenv.nix              # single source of truth: project, env, ports
 ├── pyproject.toml          # Python dependencies (managed by uv)
+├── Justfile                # task runner — run `just` to list all commands
 ├── src/
 │   ├── train.py            # starter training script
 │   └── inference.py        # SageMaker inference handler
 ├── notebooks/
 │   └── starter.ipynb       # full loop: load → train → log → deploy
 └── infra/
-    ├── devenv.nix          # infra tooling (tofu, gum, mutagen, aws-nuke)
-    ├── scripts.nix         # devenv script definitions (routing table)
+    ├── devenv.nix          # infra tooling (tofu, gum, mutagen, aws-nuke, just)
+    ├── packages.nix        # script packages — writeShellApplication derivations
     ├── scripts/
-    │   ├── _lib.sh         # shared guards + helpers
+    │   ├── _lib.sh         # shared guards + helpers (bash)
     │   ├── _wizard.sh      # first-time setup wizard
     │   ├── enter-shell.sh  # shell entrypoint
+    │   ├── py/             # teardown, deploy, restore (Python + shared _lib.py)
     │   ├── aws/            # setup, aws-login, tf-bootstrap/init/plan/apply/destroy
     │   ├── sync/           # sync-ec2, nixos-rebuild, nix-sync
     │   ├── mlflow/         # mlflow-start/open/close
     │   ├── jupyter/        # jupyter-ec2, tunnel management
     │   ├── training/       # train, train-on-ec2, train-status, train-logs
-    │   ├── deploy/         # container-build, deploy, deploy-status
+    │   ├── deploy/         # container-build, deploy-status
     │   ├── nix/            # nix-cache-push/pull/configure
-    │   └── lifecycle/      # teardown, restore
+    │   └── lifecycle/      # (empty — lifecycle scripts moved to py/)
     └── terraform/
         └── modules/
             ├── ec2/                # NixOS VM, IAM roles, SG, VPC endpoints

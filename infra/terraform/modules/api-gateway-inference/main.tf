@@ -25,7 +25,7 @@ resource "aws_iam_role_policy" "apigw_invoke" {
     Statement = [{
       Effect   = "Allow"
       Action   = "sagemaker:InvokeEndpoint"
-      Resource = var.endpoint_arn
+      Resource = var.endpoint_arn != "" ? var.endpoint_arn : "*"
     }]
   })
 }

@@ -8,13 +8,12 @@
 let
   devenvRoot = "${config.env.DEVENV_ROOT}/.devenv-configs/";
   projectRoot = "${config.env.DEVENV_ROOT}/";
+  scriptPkgs = import ./packages.nix { inherit pkgs; };
 in
 {
-  imports = [ ./scripts.nix ];
-
   # Infra tooling — local only. Not pushed to EC2.
   # Shared DS/ML packages live in root devenv.nix.
-  packages = [
+  packages = scriptPkgs ++ [
     pkgs.tenv # Terraform/OpenTofu version manager
     pkgs.jq # JSON CLI
     pkgs.crane # Layer append/mutate and manifest format conversion
@@ -23,6 +22,7 @@ in
     pkgs.mutagen # Bidirectional real-time sync local <-> EC2
     pkgs.aws-nuke # Nuclear teardown — deletes all AWS resources in the account
     pkgs.shellcheck
+    pkgs.just # Task runner (run `just` to list all commands)
   ];
 
   env = {

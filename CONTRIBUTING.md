@@ -24,9 +24,10 @@ The devenv shell activates automatically. All tools (tofu, gum, mutagen, aws-nuk
 
 1. Fork and create a branch from `main`
 2. Make your changes
-3. Test locally — for infra scripts, at minimum verify `shellcheck` passes:
+3. Test locally — verify `shellcheck` passes for bash scripts and `ruff` for Python:
    ```bash
    shellcheck infra/scripts/**/*.sh infra/scripts/*.sh
+   uv run ruff check infra/scripts/py/
    ```
 4. Open a pull request with a clear description of what and why
 
@@ -35,6 +36,8 @@ The devenv shell activates automatically. All tools (tofu, gum, mutagen, aws-nuk
 **Nix**: follow [nixpkgs formatting conventions](https://github.com/NixOS/nixpkgs/blob/master/CONTRIBUTING.md#nix-expression-style-guide) — 2-space indentation, `let … in` for local bindings, descriptive attribute names.
 
 **Bash**: `set -euo pipefail` at the top of every script. Avoid bashisms that aren't in POSIX where possible. No silent failures — every non-trivial command should have `|| true` or explicit error handling. Run `shellcheck` before submitting.
+
+**Python** (`infra/scripts/py/`): `teardown.py`, `deploy.py`, and `restore.py` use typer + boto3. Follow the shared helper pattern in `_lib.py` — avoid duplicating guards or subprocess wrappers. Type annotations on all function signatures.
 
 **Commit messages**: short imperative subject line (≤72 chars), present tense. No period at the end.
 

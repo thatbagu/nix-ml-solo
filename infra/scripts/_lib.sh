@@ -43,7 +43,11 @@ _write_iam_profile() {
   local profile="$1" key_id="$2" secret="$3" region="$4"
   local cfg="$CONFIGS/.aws/config"
   local creds="$CONFIGS/.aws/credentials"
-  if ! grep -q "\[profile ${profile}\]" "$cfg" 2>/dev/null; then
+  if grep -q "\[profile ${profile}\]" "$cfg" 2>/dev/null; then
+    sed -i.bak "/^\[profile ${profile}\]/,/^\[/{
+        s|region = .*|region = ${region}|
+      }" "$cfg" && rm -f "${cfg}.bak"
+  else
     cat >>"$cfg" <<EOF
 
 [profile ${profile}]
@@ -51,7 +55,12 @@ region = ${region}
 output = json
 EOF
   fi
-  if ! grep -q "\[${profile}\]" "$creds" 2>/dev/null; then
+  if grep -q "\[${profile}\]" "$creds" 2>/dev/null; then
+    sed -i.bak "/^\[${profile}\]/,/^\[/{
+        s|aws_access_key_id = .*|aws_access_key_id = ${key_id}|
+        s|aws_secret_access_key = .*|aws_secret_access_key = ${secret}|
+      }" "$creds" && rm -f "${creds}.bak"
+  else
     cat >>"$creds" <<EOF
 
 [${profile}]
@@ -101,12 +110,12 @@ _valid_region() {
   for region in "${_VALID_AWS_REGIONS[@]}"; do [ "$r" = "$region" ] && return 0; done
   return 1
 }
-_valid_project_name() { [[ "$1" =~ ^[a-z][a-z0-9-]{2,62}$ ]]; }
-_valid_profile_name() { [[ "$1" =~ ^[a-zA-Z][a-zA-Z0-9_-]{1,63}$ ]]; }
-_valid_ec2_type() { [[ "$1" =~ ^[a-z][a-z0-9]+(\.metal|(\.[0-9]*x?large|\.medium|\.small|\.micro|\.nano))$ ]]; }
-_valid_aws_key_id() { [[ "$1" =~ ^(AKIA|ASIA)[A-Z0-9]{16}$ ]]; }
-_valid_account_id() { [[ "$1" =~ ^[0-9]{12}$ ]]; }
-_valid_https_url() { [[ "$1" =~ ^https:// ]]; }
+_valid_project_name() { [[ $1 =~ ^[a-z][a-z0-9-]{2,62}$ ]]; }
+_valid_profile_name() { [[ $1 =~ ^[a-zA-Z][a-zA-Z0-9_-]{1,63}$ ]]; }
+_valid_ec2_type() { [[ $1 =~ ^[a-z][a-z0-9]+(\.metal|(\.[0-9]*x?large|\.medium|\.small|\.micro|\.nano))$ ]]; }
+_valid_aws_key_id() { [[ $1 =~ ^(AKIA|ASIA)[A-Z0-9]{16}$ ]]; }
+_valid_account_id() { [[ $1 =~ ^[0-9]{12}$ ]]; }
+_valid_https_url() { [[ $1 =~ ^https:// ]]; }
 
 # ── gum-backed prompt helpers ──────────────────────────────────────────────────
 
@@ -175,6 +184,16 @@ import json; d=json.load(open('$DEVENV_ROOT/devenv.lock'))
 print(d['nodes']['nixpkgs']['locked']['narHash'])" 2>/dev/null) || return 0
   export TF_VAR_nixpkgs_rev="$rev"
   export TF_VAR_nixpkgs_nar_hash="$nar_hash"
+}
+
+# Sets EC2_IP from Terraform state and validates it is a real IPv4 address.
+# Exits with a clear error if tf-apply hasn't run yet or output is missing.
+_require_ec2_ip() {
+  EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip 2>/dev/null) || true
+  if [[ ! ${EC2_IP:-} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: could not resolve EC2 IP from Terraform state — run 'tf-apply' first." >&2
+    exit 1
+  fi
 }
 
 # ── DVC init (once) ────────────────────────────────────────────────────────────

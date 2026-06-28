@@ -11,7 +11,7 @@ if [ ! -f "$CONFIG" ]; then
   exit 1
 fi
 
-EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
+_require_ec2_ip
 SSH="ssh -i $SSH_IDENTITY_FILE -o IdentitiesOnly=yes -o IdentityAgent=none -o StrictHostKeyChecking=accept-new"
 
 echo "Pushing NixOS config to $EC2_IP…"
