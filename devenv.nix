@@ -75,6 +75,8 @@ in
       settings.indent = 2;
     };
     nixpkgs-fmt.enable = true;
+    ruff.enable = true;
+    ruff-format.enable = true;
   };
 
   # ── Banner ───────────────────────────────────────────────────────────────────
