@@ -80,6 +80,10 @@ in
   # devenv.nix + devenv.lock are pushed to /home/ml/project by nixos-rebuild.
   # This service builds the devenv profile so services below can use the tools.
   # Uses S3 nix cache — run `nix-sync` locally first to pre-populate it.
+  #
+  # ExecStartPre waits for devenv.nix and devenv.lock to land (pushed by
+  # nixos-rebuild.sh after tf-apply). On first boot they aren't present yet,
+  # so without this guard the service would fail and leave MLflow unstarted.
 
   systemd.services.devenv-build = {
     description = "Build devenv environment from devenv.nix";
@@ -93,6 +97,8 @@ in
       User            = "ml";
       WorkingDirectory = "/home/ml/project";
       Environment     = [ "HOME=/home/ml" "AWS_DEFAULT_REGION=${aws_region}" ];
+      TimeoutStartSec = "600";
+      ExecStartPre    = "/bin/sh -c 'until [ -f /home/ml/project/devenv.nix ] && [ -f /home/ml/project/devenv.lock ]; do sleep 5; done'";
       ExecStart       = "/run/current-system/sw/bin/devenv shell -- echo devenv-profile-ready";
       # uv sync shellHook doesn't fire in non-interactive service context — run it explicitly.
       ExecStartPost   = "/home/ml/project/.devenv/profile/bin/uv sync --frozen --project /home/ml/project";

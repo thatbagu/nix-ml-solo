@@ -2,6 +2,8 @@
 
 Eight commands cover the ML lifecycle. Lower-level commands are available as escape hatches.
 
+`just` (or `just --list`) prints all available commands with descriptions. You can run any command directly by name or via `just <command>`.
+
 ## Core commands
 
 | Command                         | Description                                          |

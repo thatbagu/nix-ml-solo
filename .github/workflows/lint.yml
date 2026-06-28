@@ -28,5 +28,5 @@ jobs:
           nix run nixpkgs#nixpkgs-fmt -- --check \
             devenv.nix \
             infra/devenv.nix \
-            infra/scripts.nix \
+            infra/packages.nix \
             infra/container/base.nix
