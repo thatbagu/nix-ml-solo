@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.4](https://github.com/thatbagu/nix-ml-solo/compare/v0.0.3...v0.0.4) (2026-06-28)
+
+
+### Features
+
+* add ruff lint and format to pre-commit hooks for Python scripts ([a4e7039](https://github.com/thatbagu/nix-ml-solo/commit/a4e703976ca9adef0d5844493c5ccb6ac7eb7edc))
+
+
+### Bug Fixes
+
+* EC2 reliability, wizard credential handling, tunnel keepalive ([9249bd8](https://github.com/thatbagu/nix-ml-solo/commit/9249bd899bfb1238224aea4bb806f1a436a35e66))
+* EC2/tunnel reliability and infra correctness ([ce0e140](https://github.com/thatbagu/nix-ml-solo/commit/ce0e140c85cfed83cc1d625c4bf328da95e2326a))
+* refractor shell scripts as nix modules ([54dda3e](https://github.com/thatbagu/nix-ml-solo/commit/54dda3e5c3d180854d0e4f560f2746c8565880c6))
+* setup wizard IAM credential handling and profile upsert ([0b577d5](https://github.com/thatbagu/nix-ml-solo/commit/0b577d57b423fb07e60fa9c87087bf57fde23427))
+
 ## [0.0.3](https://github.com/thatbagu/nix-ml-solo/compare/v0.0.2...v0.0.3) (2026-06-26)
 
 
