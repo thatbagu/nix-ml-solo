@@ -204,6 +204,23 @@ class TestWriteIamProfile:
         lib(cmd, env={"CONFIGS": str(configs)})
         assert (configs / ".aws" / "config").read_text().count("[profile ml-solo]") == 1
 
+    def test_updates_existing_credentials(self, tmp_path):
+        configs = self._setup(tmp_path)
+        lib(
+            "_write_iam_profile 'ml-solo' 'AKIAIOSFODNN7EXAMPLE' 'oldsecret' 'us-east-1'",
+            env={"CONFIGS": str(configs)},
+        )
+        lib(
+            "_write_iam_profile 'ml-solo' 'AKIANEWKEY1234567890' 'newsecret' 'us-east-1'",
+            env={"CONFIGS": str(configs)},
+        )
+        creds = (configs / ".aws" / "credentials").read_text()
+        assert "AKIANEWKEY1234567890" in creds
+        assert "newsecret" in creds
+        assert "AKIAIOSFODNN7EXAMPLE" not in creds
+        assert "oldsecret" not in creds
+        assert creds.count("[ml-solo]") == 1
+
 
 class TestWriteSsoProfile:
     def _setup(self, tmp_path: Path) -> Path:
