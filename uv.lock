@@ -2613,6 +2613,7 @@ dependencies = [
     { name = "pandas" },
     { name = "papermill" },
     { name = "scikit-learn" },
+    { name = "typer" },
 ]
 
 [package.dev-dependencies]
@@ -2635,6 +2636,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2" },
     { name = "papermill", specifier = ">=2.6" },
     { name = "scikit-learn", specifier = ">=1.4" },
+    { name = "typer", specifier = ">=0.12" },
 ]
 
 [package.metadata.requires-dev]
