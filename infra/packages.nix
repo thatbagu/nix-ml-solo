@@ -34,7 +34,7 @@ in
   (mk "aws-verify" ./scripts/aws/aws-verify.sh [ pkgs.awscli2 ])
 
   # ── Terraform / OpenTofu ─────────────────────────────────────────────────────
-  (mk "tf-bootstrap" ./scripts/aws/tf-bootstrap.sh [ pkgs.tenv ])
+  (mk "tf-bootstrap" ./scripts/aws/tf-bootstrap.sh [ pkgs.awscli2 pkgs.tenv ])
   (mk "tf-init" ./scripts/aws/tf-init.sh [ pkgs.tenv ])
   (mk "tf-plan" ./scripts/aws/tf-plan.sh [ pkgs.tenv ])
   (mk "tf-apply" ./scripts/aws/tf-apply.sh [ pkgs.tenv ])

@@ -8,7 +8,7 @@ _require_ssh
 PROJECT="${TF_VAR_project:-nix-ml-solo}"
 SSH_HOST="${PROJECT}-ec2"
 
-EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
+_require_ec2_ip
 
 # Write SSH config entry so mutagen can reach EC2 with the right key.
 # The IP is dynamic (changes on EC2 restart), so we regenerate each time.

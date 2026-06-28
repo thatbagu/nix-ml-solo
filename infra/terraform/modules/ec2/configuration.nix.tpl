@@ -133,7 +133,7 @@ in
       RemainAfterExit = true;
       User            = "ml";
       Environment     = [ "HOME=/home/ml" ];
-      ExecStart       = "/home/ml/project/.devenv/profile/bin/uv tool install --quiet mlflow";
+      ExecStart       = "/home/ml/project/.devenv/profile/bin/uv tool install --quiet --python 3.12 mlflow";
     };
   };
 

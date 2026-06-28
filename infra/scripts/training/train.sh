@@ -22,7 +22,7 @@ if [ -z "$SCRIPT" ]; then
   exit 1
 fi
 
-_is_notebook() { [[ "$1" == *.ipynb ]]; }
+_is_notebook() { [[ $1 == *.ipynb ]]; }
 
 case "$MODE" in
 
@@ -69,7 +69,7 @@ cloud)
   DVC_BUCKET=$(cd "$TF_DIR" && tofu output -raw dvc_bucket_name)
   NIX_BUCKET=$(cd "$TF_DIR" && tofu output -raw nix_cache_bucket)
   ECR_URI=$(cd "$TF_DIR" && tofu output -raw ecr_repo_uri)
-  EC2_IP=$(cd "$TF_DIR" && tofu output -raw ec2_public_ip)
+  _require_ec2_ip
   ROLE_ARN=$(aws iam list-roles \
     --query "Roles[?contains(RoleName,'sagemaker')].Arn" \
     --output text | awk '{print $1}')

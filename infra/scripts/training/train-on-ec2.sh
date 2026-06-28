@@ -13,7 +13,7 @@ if [ -z "$SCRIPT" ]; then
   exit 1
 fi
 
-EC2_IP=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw ec2_public_ip)
+_require_ec2_ip
 SSH="ssh -i $SSH_IDENTITY_FILE -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
 EC2_DVC=$(cd "$PROJECT_ROOT/infra/terraform" && tofu output -raw dvc_remote_url 2>/dev/null || echo "${DVC_REMOTE_URL:-}")
 
